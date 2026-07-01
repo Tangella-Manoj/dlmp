@@ -25,10 +25,6 @@ public class EmailService {
     @Value("${dlmp.mail.from-name:DLMP Platform}")
     private String fromName;
 
-    /**
-     * Send an HTML email asynchronously with retry (3 attempts, exponential backoff).
-     * Uses SendGrid SMTP in production — real emails, real delivery.
-     */
     @Async
     @Retryable(retryFor = Exception.class, maxAttempts = 3,
                backoff = @Backoff(delay = 2000, multiplier = 2))
@@ -39,15 +35,69 @@ public class EmailService {
             helper.setFrom(fromAddress, fromName);
             helper.setTo(to);
             helper.setSubject(subject);
-            helper.setText(htmlBody, true); // true = HTML
-
+            helper.setText(htmlBody, true);
             mailSender.send(message);
             log.info("Email sent | to={} | subject={}", to, subject);
-
         } catch (MessagingException | java.io.UnsupportedEncodingException ex) {
             log.error("Email delivery failed | to={} | error={}", to, ex.getMessage());
             throw new RuntimeException("Email failed: " + ex.getMessage(), ex);
         }
+    }
+
+    // ─── Convenience methods called by DlmpEventConsumer ──────────────────────
+
+    public void sendWelcomeEmail(String email, String firstName) {
+        sendHtml(email, "Welcome to DLMP! 🎉", welcomeTemplate(firstName));
+    }
+
+    public void sendLoanApplicationEmail(com.dlmp.common.event.LoanEvent event) {
+        if (event.getUserEmail() == null) return;
+        String name = nameFromEmail(event.getUserEmail());
+        String body = loanAppliedTemplate(name, event.getLoanNumber(),
+            event.getPrincipalAmount() != null ? event.getPrincipalAmount().toPlainString() : "N/A",
+            event.getEmiAmount() != null ? event.getEmiAmount().toPlainString() : "N/A");
+        sendHtml(event.getUserEmail(), "Loan Application Received — " + event.getLoanNumber(), body);
+    }
+
+    public void sendLoanApprovedEmail(com.dlmp.common.event.LoanEvent event) {
+        if (event.getUserEmail() == null) return;
+        String name = nameFromEmail(event.getUserEmail());
+        String body = loanApprovedTemplate(name, event.getLoanNumber(),
+            event.getPrincipalAmount() != null ? event.getPrincipalAmount().toPlainString() : "N/A");
+        sendHtml(event.getUserEmail(), "🎊 Loan Approved — " + event.getLoanNumber(), body);
+    }
+
+    public void sendLoanRejectedEmail(com.dlmp.common.event.LoanEvent event) {
+        if (event.getUserEmail() == null) return;
+        String name = nameFromEmail(event.getUserEmail());
+        String reason = event.getRejectionReason() != null ? event.getRejectionReason() : "Please contact support";
+        String body = loanRejectedTemplate(name, event.getLoanNumber(), reason);
+        sendHtml(event.getUserEmail(), "Loan Application Update — " + event.getLoanNumber(), body);
+    }
+
+    public void sendLoanDisbursedEmail(com.dlmp.common.event.LoanEvent event) {
+        if (event.getUserEmail() == null) return;
+        String name = nameFromEmail(event.getUserEmail());
+        String body = loanDisbursedTemplate(name, event.getLoanNumber(),
+            event.getPrincipalAmount() != null ? event.getPrincipalAmount().toPlainString() : "N/A",
+            "As per your repayment schedule");
+        sendHtml(event.getUserEmail(), "Loan Disbursed — " + event.getLoanNumber(), body);
+    }
+
+    public void sendPaymentConfirmationEmail(com.dlmp.common.event.PaymentEvent event) {
+        if (event.getUserEmail() == null) return;
+        String name = nameFromEmail(event.getUserEmail());
+        String body = paymentReceivedTemplate(name,
+            event.getPaymentReference() != null ? event.getPaymentReference() : "N/A",
+            event.getAmount() != null ? event.getAmount().toPlainString() : "N/A",
+            event.getLoanId() != null ? event.getLoanId() : "N/A");
+        sendHtml(event.getUserEmail(), "Payment Received — " + event.getPaymentReference(), body);
+    }
+
+    private String nameFromEmail(String email) {
+        if (email == null) return "Customer";
+        int at = email.indexOf('@');
+        return at > 0 ? email.substring(0, at) : email;
     }
 
     // ─── HTML Templates ────────────────────────────────────────────────────────
@@ -84,10 +134,6 @@ public class EmailService {
             <p>Hi <strong>%s</strong>, congratulations! Your loan <strong>%s</strong> for
             <strong>₹%s</strong> has been approved.</p>
             <p>Disbursement will be initiated within <strong>1 business day</strong>.</p>
-            <br/>
-            <a href="https://yourdomain.com/loans" style="background:#16a34a;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">
-              View Loan Details
-            </a>
             """.formatted(firstName, loanNumber, amount));
     }
 
@@ -107,10 +153,6 @@ public class EmailService {
             <p>Hi <strong>%s</strong>, your loan <strong>%s</strong> of <strong>₹%s</strong>
             has been disbursed to your registered bank account.</p>
             <p>Your first EMI is due on <strong>%s</strong>.</p>
-            <br/>
-            <a href="https://yourdomain.com/schedule" style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">
-              View Repayment Schedule
-            </a>
             """.formatted(firstName, loanNumber, amount, emiDate));
     }
 
@@ -123,11 +165,8 @@ public class EmailService {
               <tr><td style="padding:8px;border:1px solid #ddd"><strong>Amount Paid</strong></td><td style="padding:8px;border:1px solid #ddd">₹%s</td></tr>
               <tr><td style="padding:8px;border:1px solid #ddd"><strong>Loan</strong></td><td style="padding:8px;border:1px solid #ddd">%s</td></tr>
             </table>
-            <p style="margin-top:16px;color:#6b7280;font-size:12px">This is an automated receipt. Please retain it for your records.</p>
             """.formatted(firstName, payRef, amount, loanNumber));
     }
-
-    // ─── Private helper ────────────────────────────────────────────────────────
 
     private String html(String body) {
         return """
@@ -140,10 +179,6 @@ public class EmailService {
               <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
                 %s
               </div>
-              <p style="text-align:center;color:#9ca3af;font-size:11px;margin-top:16px">
-                © 2026 DLMP. All rights reserved.<br/>
-                <a href="https://yourdomain.com/unsubscribe" style="color:#9ca3af">Unsubscribe</a>
-              </p>
             </body>
             </html>
             """.formatted(body);
