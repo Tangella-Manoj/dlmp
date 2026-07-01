@@ -1,0 +1,229 @@
+services:
+
+  - type: web
+    name: dlmp-user-service
+    runtime: docker
+    dockerfilePath: user-service/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: MYSQL_HOST
+        value: db4free.net
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_DB
+        value: dlmpdb
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6380"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL_ENABLED
+        value: "true"
+      - key: KAFKA_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: web
+    name: dlmp-loan-service
+    runtime: docker
+    dockerfilePath: loan-service/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: MYSQL_HOST
+        value: db4free.net
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_DB
+        value: dlmpdb
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6380"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL_ENABLED
+        value: "true"
+      - key: KAFKA_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: USER_SERVICE_URL
+        value: https://dlmp-user-service.onrender.com
+
+  - type: web
+    name: dlmp-payment-service
+    runtime: docker
+    dockerfilePath: payment-service/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: MYSQL_HOST
+        value: db4free.net
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_DB
+        value: dlmpdb
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6380"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL_ENABLED
+        value: "true"
+      - key: KAFKA_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: web
+    name: dlmp-notification-service
+    runtime: docker
+    dockerfilePath: notification-service/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: MYSQL_HOST
+        value: db4free.net
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_DB
+        value: dlmpdb
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6380"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL_ENABLED
+        value: "true"
+      - key: KAFKA_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: MAIL_HOST
+        value: smtp.sendgrid.net
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        value: apikey
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: DLMP Platform
+
+  - type: web
+    name: dlmp-report-service
+    runtime: docker
+    dockerfilePath: report-service/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: MYSQL_HOST
+        value: db4free.net
+      - key: MYSQL_PORT
+        value: "3306"
+      - key: MYSQL_DB
+        value: dlmpdb
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6380"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL_ENABLED
+        value: "true"
+      - key: KAFKA_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: web
+    name: dlmp-gateway
+    runtime: docker
+    dockerfilePath: api-gateway/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: USER_SERVICE_HOST
+        value: dlmp-user-service.onrender.com
+      - key: LOAN_SERVICE_HOST
+        value: dlmp-loan-service.onrender.com
+      - key: PAYMENT_SERVICE_HOST
+        value: dlmp-payment-service.onrender.com
+      - key: NOTIFICATION_SERVICE_HOST
+        value: dlmp-notification-service.onrender.com
+      - key: REPORT_SERVICE_HOST
+        value: dlmp-report-service.onrender.com
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6380"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL_ENABLED
+        value: "true"
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://dlmp-gateway.onrender.com

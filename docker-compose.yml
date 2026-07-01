@@ -1,0 +1,375 @@
+# ─── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  dlmp-network:
+    driver: bridge
+
+# ─── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  mysql-users-data:
+  mysql-loans-data:
+  mysql-payments-data:
+  mysql-notifications-data:
+  mysql-reports-data:
+  redis-data:
+  kafka-data:
+  zookeeper-data:
+
+# ─── Common defaults ───────────────────────────────────────────────────────────
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks:
+    - dlmp-network
+
+x-mysql-defaults: &mysql-defaults
+  image: mysql:8.0
+  <<: *service-defaults
+  environment:
+    MYSQL_ROOT_PASSWORD: root_secure_2026
+    MYSQL_USER: dlmp_user
+    MYSQL_PASSWORD: dlmp_password
+  healthcheck:
+    test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_secure_2026"]
+    interval: 15s
+    timeout: 5s
+    retries: 10
+
+x-app-defaults: &app-defaults
+  <<: *service-defaults
+  environment:
+    MYSQL_USER: dlmp_user
+    MYSQL_PASSWORD: dlmp_password
+    MYSQL_HOST: mysql-users     # overridden per service
+    KAFKA_SERVERS: kafka:29092
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    ZIPKIN_HOST: zipkin
+    JWT_SECRET: dlmp-enterprise-jwt-secret-minimum-64-bytes-for-hs512-xxxxxxxxxxxxxxxxxxx
+    JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC"
+  depends_on:
+    kafka:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    <<: *service-defaults
+    container_name: dlmp-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    <<: *service-defaults
+    container_name: dlmp-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"   # host:container — EXTERNAL listener for local dev tools
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # PLAINTEXT = internal Docker network (port 29092)
+      # EXTERNAL  = host machine access (port 9092 mapped through Docker)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_JMX_PORT: 9999
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: dlmp-kafka-ui
+    <<: *service-defaults
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "9000:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: dlmp-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: dlmp-redis
+    <<: *service-defaults
+    command: redis-server --appendonly yes --requirepass ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: dlmp-zipkin
+    <<: *service-defaults
+    ports:
+      - "9411:9411"
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: dlmp-mailhog
+    <<: *service-defaults
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # ─── MySQL Databases (database-per-service) ──────────────────────────────────
+
+  mysql-users:
+    <<: *mysql-defaults
+    container_name: dlmp-mysql-users
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_2026
+      MYSQL_USER: dlmp_user
+      MYSQL_PASSWORD: dlmp_password
+      MYSQL_DATABASE: dlmp_users
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-users-data:/var/lib/mysql
+
+  mysql-loans:
+    <<: *mysql-defaults
+    container_name: dlmp-mysql-loans
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_2026
+      MYSQL_USER: dlmp_user
+      MYSQL_PASSWORD: dlmp_password
+      MYSQL_DATABASE: dlmp_loans
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-loans-data:/var/lib/mysql
+
+  mysql-payments:
+    <<: *mysql-defaults
+    container_name: dlmp-mysql-payments
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_2026
+      MYSQL_USER: dlmp_user
+      MYSQL_PASSWORD: dlmp_password
+      MYSQL_DATABASE: dlmp_payments
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-payments-data:/var/lib/mysql
+
+  mysql-notifications:
+    <<: *mysql-defaults
+    container_name: dlmp-mysql-notifications
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_2026
+      MYSQL_USER: dlmp_user
+      MYSQL_PASSWORD: dlmp_password
+      MYSQL_DATABASE: dlmp_notifications
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-notifications-data:/var/lib/mysql
+
+  mysql-reports:
+    <<: *mysql-defaults
+    container_name: dlmp-mysql-reports
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secure_2026
+      MYSQL_USER: dlmp_user
+      MYSQL_PASSWORD: dlmp_password
+      MYSQL_DATABASE: dlmp_reports
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql-reports-data:/var/lib/mysql
+
+  # ─── Application Services ────────────────────────────────────────────────────
+
+  api-gateway:
+    <<: *app-defaults
+    container_name: dlmp-gateway
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      MYSQL_HOST: mysql-users
+      USER_SERVICE_HOST: user-service
+      LOAN_SERVICE_HOST: loan-service
+      PAYMENT_SERVICE_HOST: payment-service
+      NOTIFICATION_SERVICE_HOST: notification-service
+      REPORT_SERVICE_HOST: report-service
+      KAFKA_SERVERS: kafka:9092
+    depends_on:
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  user-service:
+    <<: *app-defaults
+    container_name: dlmp-user-service
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      MYSQL_HOST: mysql-users
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+    depends_on:
+      mysql-users:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  loan-service:
+    <<: *app-defaults
+    container_name: dlmp-loan-service
+    build:
+      context: .
+      dockerfile: loan-service/Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      MYSQL_HOST: mysql-loans
+      USER_SERVICE_URL: http://user-service:8081
+    depends_on:
+      mysql-loans:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  payment-service:
+    <<: *app-defaults
+    container_name: dlmp-payment-service
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      MYSQL_HOST: mysql-payments
+    depends_on:
+      mysql-payments:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  notification-service:
+    <<: *app-defaults
+    container_name: dlmp-notification-service
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      MYSQL_HOST: mysql-notifications
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+    depends_on:
+      mysql-notifications:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  report-service:
+    <<: *app-defaults
+    container_name: dlmp-report-service
+    build:
+      context: .
+      dockerfile: report-service/Dockerfile
+    ports:
+      - "8085:8085"
+    environment:
+      MYSQL_HOST: mysql-reports
+    depends_on:
+      mysql-reports:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ─── Monitoring (optional profile) ─────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dlmp-prometheus
+    <<: *service-defaults
+    profiles:
+      - monitoring
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dlmp-grafana
+    <<: *service-defaults
+    profiles:
+      - monitoring
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: dlmp_grafana_2026
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

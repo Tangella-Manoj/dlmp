@@ -1,0 +1,15 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  DLMP v2.0 — Railway.app Deployment
+#  Free subdomain: https://dlmp-gateway.up.railway.app
+#  Each service deploys as a separate Railway service.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build]
+builder = "DOCKERFILE"
+buildCommand = "mvn package -DskipTests --no-transfer-progress -q"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+healthcheckPath = "/actuator/health"
+healthcheckTimeout = 60

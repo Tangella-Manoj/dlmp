@@ -1,0 +1,106 @@
+server:
+  port: ${PORT:8082}
+
+spring:
+  application:
+    name: loan-service
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:db4free.net}:${MYSQL_PORT:3306}/${MYSQL_DB:dlmpdb}?useSSL=true&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8&createDatabaseIfNotExist=true
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: LoanPool
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 60000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      auto-commit: false
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    table: flyway_schema_history_loans   # unique table per service
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 5
+          max-idle: 2
+
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      enable-idempotence: true
+      properties:
+        max.in.flight.requests.per.connection: 5
+    properties:
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS}
+
+dlmp:
+  jwt:
+    secret: ${JWT_SECRET}
+  services:
+    user-service-url: ${USER_SERVICE_URL:http://localhost:8081}
+  outbox:
+    relay-delay-ms: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  tracing:
+    sampling:
+      probability: 0.1
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      user-service:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+  retry:
+    instances:
+      user-service:
+        max-attempts: 3
+        wait-duration: 1s
+
+feign:
+  circuitbreaker:
+    enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.dlmp: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId}] %logger{36} - %msg%n"
