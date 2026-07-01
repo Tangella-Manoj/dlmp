@@ -27,12 +27,14 @@ services:
       - key: REDIS_SSL_ENABLED
         value: "true"
       - key: KAFKA_SERVERS
-        sync: false
+        value: dlmp-kafka-dlmp.b.aivencloud.com:24364
       - key: KAFKA_SECURITY_PROTOCOL
         value: SASL_SSL
       - key: KAFKA_SASL_MECHANISM
         value: SCRAM-SHA-256
       - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: AIVEN_CA_CERT
         sync: false
       - key: JWT_SECRET
         sync: false
@@ -64,12 +66,14 @@ services:
       - key: REDIS_SSL_ENABLED
         value: "true"
       - key: KAFKA_SERVERS
-        sync: false
+        value: dlmp-kafka-dlmp.b.aivencloud.com:24364
       - key: KAFKA_SECURITY_PROTOCOL
         value: SASL_SSL
       - key: KAFKA_SASL_MECHANISM
         value: SCRAM-SHA-256
       - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: AIVEN_CA_CERT
         sync: false
       - key: JWT_SECRET
         sync: false
@@ -103,12 +107,14 @@ services:
       - key: REDIS_SSL_ENABLED
         value: "true"
       - key: KAFKA_SERVERS
-        sync: false
+        value: dlmp-kafka-dlmp.b.aivencloud.com:24364
       - key: KAFKA_SECURITY_PROTOCOL
         value: SASL_SSL
       - key: KAFKA_SASL_MECHANISM
         value: SCRAM-SHA-256
       - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: AIVEN_CA_CERT
         sync: false
       - key: JWT_SECRET
         sync: false
@@ -187,12 +193,14 @@ services:
       - key: REDIS_SSL_ENABLED
         value: "true"
       - key: KAFKA_SERVERS
-        sync: false
+        value: dlmp-kafka-dlmp.b.aivencloud.com:24364
       - key: KAFKA_SECURITY_PROTOCOL
         value: SASL_SSL
       - key: KAFKA_SASL_MECHANISM
         value: SCRAM-SHA-256
       - key: KAFKA_SASL_JAAS
+        sync: false
+      - key: AIVEN_CA_CERT
         sync: false
       - key: JWT_SECRET
         sync: false

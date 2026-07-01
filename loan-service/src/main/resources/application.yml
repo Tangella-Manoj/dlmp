@@ -57,6 +57,9 @@ spring:
       security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
       sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
       sasl.jaas.config: ${KAFKA_SASL_JAAS}
+      ssl.truststore.type: PEM
+      ssl.truststore.certificates: ${AIVEN_CA_CERT}
+      ssl.endpoint.identification.algorithm: ""
 
 dlmp:
   jwt:
