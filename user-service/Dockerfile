@@ -8,7 +8,8 @@ COPY common/pom.xml common/pom.xml
 COPY common/src common/src
 COPY user-service/pom.xml user-service/pom.xml
 COPY user-service/src user-service/src
-RUN chmod +x mvnw && ./mvnw install -pl user-service -am --no-transfer-progress -DskipTests -q
+ENV MAVEN_OPTS="-Xmx384m -Xms128m"
+RUN chmod +x mvnw && ./mvnw install -pl user-service -am --no-transfer-progress -DskipTests -e
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
 WORKDIR /app
@@ -18,4 +19,4 @@ USER dlmp
 COPY --from=builder /workspace/user-service/target/*.jar app.jar
 EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 CMD curl -f http://localhost:8081/actuator/health || exit 1
-ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-XX:+UseG1GC","-Xms256m","-Xmx512m","-jar","app.jar"]
+ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-XX:+UseG1GC","-Xms64m","-Xmx256m","-jar","app.jar"]
