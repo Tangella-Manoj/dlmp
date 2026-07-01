@@ -6,7 +6,7 @@ spring:
     name: loan-service
 
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:db4free.net}:${MYSQL_PORT:3306}/${MYSQL_DB:dlmpdb}?useSSL=true&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8&createDatabaseIfNotExist=true
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:24351}/${MYSQL_DB:defaultdb}?useSSL=true&requireSSL=true&verifyServerCertificate=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
     username: ${MYSQL_USER}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -33,7 +33,7 @@ spring:
   data:
     redis:
       host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6380}
+      port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
       ssl:
         enabled: ${REDIS_SSL_ENABLED:true}

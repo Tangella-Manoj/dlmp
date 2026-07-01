@@ -9,19 +9,19 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: db4free.net
+        value: dlmp-db-dlmp-j.aivencloud.com
       - key: MYSQL_PORT
-        value: "3306"
+        value: "24351"
       - key: MYSQL_DB
-        value: dlmpdb
+        value: defaultdb
       - key: MYSQL_USER
-        sync: false
+        value: avnadmin
       - key: MYSQL_PASSWORD
         sync: false
       - key: REDIS_HOST
-        sync: false
+        value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT
-        value: "6380"
+        value: "6379"
       - key: REDIS_PASSWORD
         sync: false
       - key: REDIS_SSL_ENABLED
@@ -46,19 +46,19 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: db4free.net
+        value: dlmp-db-dlmp-j.aivencloud.com
       - key: MYSQL_PORT
-        value: "3306"
+        value: "24351"
       - key: MYSQL_DB
-        value: dlmpdb
+        value: defaultdb
       - key: MYSQL_USER
-        sync: false
+        value: avnadmin
       - key: MYSQL_PASSWORD
         sync: false
       - key: REDIS_HOST
-        sync: false
+        value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT
-        value: "6380"
+        value: "6379"
       - key: REDIS_PASSWORD
         sync: false
       - key: REDIS_SSL_ENABLED
@@ -85,19 +85,19 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: db4free.net
+        value: dlmp-db-dlmp-j.aivencloud.com
       - key: MYSQL_PORT
-        value: "3306"
+        value: "24351"
       - key: MYSQL_DB
-        value: dlmpdb
+        value: defaultdb
       - key: MYSQL_USER
-        sync: false
+        value: avnadmin
       - key: MYSQL_PASSWORD
         sync: false
       - key: REDIS_HOST
-        sync: false
+        value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT
-        value: "6380"
+        value: "6379"
       - key: REDIS_PASSWORD
         sync: false
       - key: REDIS_SSL_ENABLED
@@ -122,19 +122,19 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: db4free.net
+        value: dlmp-db-dlmp-j.aivencloud.com
       - key: MYSQL_PORT
-        value: "3306"
+        value: "24351"
       - key: MYSQL_DB
-        value: dlmpdb
+        value: defaultdb
       - key: MYSQL_USER
-        sync: false
+        value: avnadmin
       - key: MYSQL_PASSWORD
         sync: false
       - key: REDIS_HOST
-        sync: false
+        value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT
-        value: "6380"
+        value: "6379"
       - key: REDIS_PASSWORD
         sync: false
       - key: REDIS_SSL_ENABLED
@@ -169,19 +169,19 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: db4free.net
+        value: dlmp-db-dlmp-j.aivencloud.com
       - key: MYSQL_PORT
-        value: "3306"
+        value: "24351"
       - key: MYSQL_DB
-        value: dlmpdb
+        value: defaultdb
       - key: MYSQL_USER
-        sync: false
+        value: avnadmin
       - key: MYSQL_PASSWORD
         sync: false
       - key: REDIS_HOST
-        sync: false
+        value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT
-        value: "6380"
+        value: "6379"
       - key: REDIS_PASSWORD
         sync: false
       - key: REDIS_SSL_ENABLED
@@ -216,9 +216,9 @@ services:
       - key: REPORT_SERVICE_HOST
         value: dlmp-report-service.onrender.com
       - key: REDIS_HOST
-        sync: false
+        value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT
-        value: "6380"
+        value: "6379"
       - key: REDIS_PASSWORD
         sync: false
       - key: REDIS_SSL_ENABLED
