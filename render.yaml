@@ -9,7 +9,7 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: dlmp-db-dlmp-j.aivencloud.com
+        value: dlmp-db-dlmp.j.aivencloud.com
       - key: MYSQL_PORT
         value: "24351"
       - key: MYSQL_DB
@@ -48,7 +48,7 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: dlmp-db-dlmp-j.aivencloud.com
+        value: dlmp-db-dlmp.j.aivencloud.com
       - key: MYSQL_PORT
         value: "24351"
       - key: MYSQL_DB
@@ -89,7 +89,7 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: dlmp-db-dlmp-j.aivencloud.com
+        value: dlmp-db-dlmp.j.aivencloud.com
       - key: MYSQL_PORT
         value: "24351"
       - key: MYSQL_DB
@@ -128,7 +128,7 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: dlmp-db-dlmp-j.aivencloud.com
+        value: dlmp-db-dlmp.j.aivencloud.com
       - key: MYSQL_PORT
         value: "24351"
       - key: MYSQL_DB
@@ -175,7 +175,7 @@ services:
     healthCheckPath: /actuator/health
     envVars:
       - key: MYSQL_HOST
-        value: dlmp-db-dlmp-j.aivencloud.com
+        value: dlmp-db-dlmp.j.aivencloud.com
       - key: MYSQL_PORT
         value: "24351"
       - key: MYSQL_DB

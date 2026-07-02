@@ -7,11 +7,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+/**
+ * Email service — all failures are non-fatal (logged only).
+ * Enable via MAIL_ENABLED=true + MAIL_PASSWORD env var.
+ * Recommended provider: Brevo (300 emails/day free, no credit card).
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -19,16 +21,26 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${dlmp.mail.from:noreply@yourdomain.com}")
+    @Value("${dlmp.mail.from:noreply@dlmp.com}")
     private String fromAddress;
 
     @Value("${dlmp.mail.from-name:DLMP Platform}")
     private String fromName;
 
-    @Async
-    @Retryable(retryFor = Exception.class, maxAttempts = 3,
-               backoff = @Backoff(delay = 2000, multiplier = 2))
+    @Value("${dlmp.mail.enabled:false}")
+    private boolean mailEnabled;
+
+    // ─── Core sender — NEVER throws, failures are logged only ─────────────────
+
     public void sendHtml(String to, String subject, String htmlBody) {
+        if (!mailEnabled) {
+            log.debug("[EMAIL DISABLED] Would send to={} subject={}", to, subject);
+            return;
+        }
+        if (to == null || to.isBlank()) {
+            log.warn("[EMAIL] Skipping — recipient is empty");
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -37,10 +49,12 @@ public class EmailService {
             helper.setSubject(subject);
             helper.setText(htmlBody, true);
             mailSender.send(message);
-            log.info("Email sent | to={} | subject={}", to, subject);
+            log.info("[EMAIL] Sent | to={} | subject={}", to, subject);
         } catch (MessagingException | java.io.UnsupportedEncodingException ex) {
-            log.error("Email delivery failed | to={} | error={}", to, ex.getMessage());
-            throw new RuntimeException("Email failed: " + ex.getMessage(), ex);
+            log.error("[EMAIL] Delivery failed | to={} | subject={} | error={}", to, subject, ex.getMessage());
+            // intentionally NOT rethrowing — email failure must never crash the service
+        } catch (Exception ex) {
+            log.error("[EMAIL] Unexpected failure | to={} | error={}", to, ex.getMessage());
         }
     }
 
@@ -52,46 +66,48 @@ public class EmailService {
 
     public void sendLoanApplicationEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
-        String name = nameFromEmail(event.getUserEmail());
-        String body = loanAppliedTemplate(name, event.getLoanNumber(),
-            event.getPrincipalAmount() != null ? event.getPrincipalAmount().toPlainString() : "N/A",
-            event.getEmiAmount() != null ? event.getEmiAmount().toPlainString() : "N/A");
-        sendHtml(event.getUserEmail(), "Loan Application Received — " + event.getLoanNumber(), body);
+        sendHtml(event.getUserEmail(),
+            "Loan Application Received — " + event.getLoanNumber(),
+            loanAppliedTemplate(nameFromEmail(event.getUserEmail()), event.getLoanNumber(),
+                str(event.getPrincipalAmount()), str(event.getEmiAmount())));
     }
 
     public void sendLoanApprovedEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
-        String name = nameFromEmail(event.getUserEmail());
-        String body = loanApprovedTemplate(name, event.getLoanNumber(),
-            event.getPrincipalAmount() != null ? event.getPrincipalAmount().toPlainString() : "N/A");
-        sendHtml(event.getUserEmail(), "🎊 Loan Approved — " + event.getLoanNumber(), body);
+        sendHtml(event.getUserEmail(),
+            "Loan Approved — " + event.getLoanNumber(),
+            loanApprovedTemplate(nameFromEmail(event.getUserEmail()),
+                event.getLoanNumber(), str(event.getPrincipalAmount())));
     }
 
     public void sendLoanRejectedEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
-        String name = nameFromEmail(event.getUserEmail());
-        String reason = event.getRejectionReason() != null ? event.getRejectionReason() : "Please contact support";
-        String body = loanRejectedTemplate(name, event.getLoanNumber(), reason);
-        sendHtml(event.getUserEmail(), "Loan Application Update — " + event.getLoanNumber(), body);
+        sendHtml(event.getUserEmail(),
+            "Loan Application Update — " + event.getLoanNumber(),
+            loanRejectedTemplate(nameFromEmail(event.getUserEmail()), event.getLoanNumber(),
+                event.getRejectionReason() != null ? event.getRejectionReason() : "Please contact support"));
     }
 
     public void sendLoanDisbursedEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
-        String name = nameFromEmail(event.getUserEmail());
-        String body = loanDisbursedTemplate(name, event.getLoanNumber(),
-            event.getPrincipalAmount() != null ? event.getPrincipalAmount().toPlainString() : "N/A",
-            "As per your repayment schedule");
-        sendHtml(event.getUserEmail(), "Loan Disbursed — " + event.getLoanNumber(), body);
+        sendHtml(event.getUserEmail(),
+            "Loan Disbursed — " + event.getLoanNumber(),
+            loanDisbursedTemplate(nameFromEmail(event.getUserEmail()),
+                event.getLoanNumber(), str(event.getPrincipalAmount()), "As per your repayment schedule"));
     }
 
     public void sendPaymentConfirmationEmail(com.dlmp.common.event.PaymentEvent event) {
         if (event.getUserEmail() == null) return;
-        String name = nameFromEmail(event.getUserEmail());
-        String body = paymentReceivedTemplate(name,
-            event.getPaymentReference() != null ? event.getPaymentReference() : "N/A",
-            event.getAmount() != null ? event.getAmount().toPlainString() : "N/A",
-            event.getLoanId() != null ? event.getLoanId() : "N/A");
-        sendHtml(event.getUserEmail(), "Payment Received — " + event.getPaymentReference(), body);
+        sendHtml(event.getUserEmail(),
+            "Payment Received — " + event.getPaymentReference(),
+            paymentReceivedTemplate(nameFromEmail(event.getUserEmail()),
+                event.getPaymentReference() != null ? event.getPaymentReference() : "N/A",
+                str(event.getAmount()),
+                event.getLoanId() != null ? event.getLoanId() : "N/A"));
+    }
+
+    private String str(Object val) {
+        return val != null ? val.toString() : "N/A";
     }
 
     private String nameFromEmail(String email) {
@@ -107,80 +123,59 @@ public class EmailService {
             <h2>Welcome to DLMP, %s! 🎉</h2>
             <p>Your account has been created successfully.</p>
             <p>You can now apply for loans, track repayments, and manage your financial journey.</p>
-            <br/>
-            <a href="https://yourdomain.com/login" style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">
-              Login to Dashboard
-            </a>
             """.formatted(firstName));
     }
 
     public String loanAppliedTemplate(String firstName, String loanNumber, String amount, String emi) {
         return html("""
             <h2>Loan Application Received ✅</h2>
-            <p>Hi <strong>%s</strong>, your loan application has been submitted successfully.</p>
+            <p>Hi <strong>%s</strong>, your loan application has been submitted.</p>
             <table style="border-collapse:collapse;width:100%%">
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Loan Number</strong></td><td style="padding:8px;border:1px solid #ddd">%s</td></tr>
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Amount Applied</strong></td><td style="padding:8px;border:1px solid #ddd">₹%s</td></tr>
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Estimated EMI</strong></td><td style="padding:8px;border:1px solid #ddd">₹%s/month</td></tr>
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Status</strong></td><td style="padding:8px;border:1px solid #ddd">Under Review</td></tr>
+              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Loan</strong></td><td style="padding:8px;border:1px solid #ddd">%s</td></tr>
+              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Amount</strong></td><td style="padding:8px;border:1px solid #ddd">₹%s</td></tr>
+              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Est. EMI</strong></td><td style="padding:8px;border:1px solid #ddd">₹%s/month</td></tr>
             </table>
-            <p style="margin-top:16px">Our team will review your application within <strong>24–48 hours</strong>.</p>
             """.formatted(firstName, loanNumber, amount, emi));
     }
 
     public String loanApprovedTemplate(String firstName, String loanNumber, String amount) {
         return html("""
             <h2 style="color:#16a34a">Loan Approved! 🎊</h2>
-            <p>Hi <strong>%s</strong>, congratulations! Your loan <strong>%s</strong> for
-            <strong>₹%s</strong> has been approved.</p>
-            <p>Disbursement will be initiated within <strong>1 business day</strong>.</p>
+            <p>Hi <strong>%s</strong>, your loan <strong>%s</strong> for ₹%s has been approved.</p>
             """.formatted(firstName, loanNumber, amount));
     }
 
     public String loanRejectedTemplate(String firstName, String loanNumber, String reason) {
         return html("""
             <h2 style="color:#dc2626">Loan Application Update</h2>
-            <p>Hi <strong>%s</strong>, we regret to inform you that your loan application
-            <strong>%s</strong> could not be approved at this time.</p>
+            <p>Hi <strong>%s</strong>, your loan <strong>%s</strong> could not be approved.</p>
             <p><strong>Reason:</strong> %s</p>
-            <p>You may re-apply after 90 days or contact our support team for more information.</p>
             """.formatted(firstName, loanNumber, reason));
     }
 
     public String loanDisbursedTemplate(String firstName, String loanNumber, String amount, String emiDate) {
         return html("""
             <h2 style="color:#1a56db">Loan Disbursed! 💰</h2>
-            <p>Hi <strong>%s</strong>, your loan <strong>%s</strong> of <strong>₹%s</strong>
-            has been disbursed to your registered bank account.</p>
-            <p>Your first EMI is due on <strong>%s</strong>.</p>
+            <p>Hi <strong>%s</strong>, your loan <strong>%s</strong> of ₹%s has been disbursed.</p>
+            <p>First EMI due: <strong>%s</strong>.</p>
             """.formatted(firstName, loanNumber, amount, emiDate));
     }
 
     public String paymentReceivedTemplate(String firstName, String payRef, String amount, String loanNumber) {
         return html("""
             <h2 style="color:#16a34a">Payment Received ✅</h2>
-            <p>Hi <strong>%s</strong>, we have received your payment.</p>
-            <table style="border-collapse:collapse;width:100%%">
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Payment Reference</strong></td><td style="padding:8px;border:1px solid #ddd">%s</td></tr>
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Amount Paid</strong></td><td style="padding:8px;border:1px solid #ddd">₹%s</td></tr>
-              <tr><td style="padding:8px;border:1px solid #ddd"><strong>Loan</strong></td><td style="padding:8px;border:1px solid #ddd">%s</td></tr>
-            </table>
-            """.formatted(firstName, payRef, amount, loanNumber));
+            <p>Hi <strong>%s</strong>, we received your payment of ₹%s (Ref: %s, Loan: %s).</p>
+            """.formatted(firstName, amount, payRef, loanNumber));
     }
 
     private String html(String body) {
         return """
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#1f2937">
+            <!DOCTYPE html><html><body style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">
               <div style="background:#1a56db;padding:20px;border-radius:8px 8px 0 0;text-align:center">
-                <h1 style="color:#ffffff;margin:0;font-size:22px">DLMP Platform</h1>
+                <h1 style="color:#fff;margin:0">DLMP Platform</h1>
               </div>
-              <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
-                %s
-              </div>
-            </body>
-            </html>
+              <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-radius:0 0 8px 8px">%s</div>
+            </body></html>
             """.formatted(body);
     }
 }
