@@ -2,7 +2,6 @@ package com.dlmp.loan.service.command;
 
 import com.dlmp.common.event.LoanEvent;
 import com.dlmp.loan.domain.entity.Loan;
-import com.dlmp.loan.domain.entity.OutboxEvent;
 import com.dlmp.loan.domain.enums.LoanStatus;
 import com.dlmp.loan.domain.enums.LoanType;
 import com.dlmp.loan.dto.request.LoanApplicationRequest;
@@ -15,6 +14,8 @@ import com.dlmp.loan.service.outbox.OutboxRelayService;
 import com.dlmp.loan.service.saga.LoanDisbursementSaga;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +39,8 @@ public class LoanCommandService {
     private final LoanDisbursementSaga disbursementSaga;
 
     @Transactional
-    public Loan applyForLoan(LoanApplicationRequest req, String userId, String traceId) {
+    @CacheEvict(value = "portfolio-stats", key = "'all'")
+    public Loan applyForLoan(LoanApplicationRequest req, String userId, String userEmail, String traceId) {
         LoanType type;
         try { type = LoanType.valueOf(req.getLoanType()); }
         catch (Exception e) { throw new LoanProcessingException("Invalid loan type: " + req.getLoanType()); }
@@ -68,6 +70,7 @@ public class LoanCommandService {
         Loan loan = Loan.builder()
                 .loanNumber(generateLoanNumber())
                 .userId(userId)
+                .applicantEmail(userEmail)
                 .loanType(type)
                 .principalAmount(req.getPrincipalAmount())
                 .interestRate(rate)
@@ -88,7 +91,7 @@ public class LoanCommandService {
 
         // Outbox event
         LoanEvent event = LoanEvent.of("LOAN_APPLICATION_SUBMITTED",
-                loan.getId(), loan.getLoanNumber(), userId, null, traceId);
+                loan.getId(), loan.getLoanNumber(), userId, loan.getApplicantEmail(), traceId);
         event.setLoanType(type.name());
         event.setPrincipalAmount(req.getPrincipalAmount());
         event.setCreditScore(assessment.score());
@@ -103,6 +106,10 @@ public class LoanCommandService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "loans", key = "#loanId"),
+        @CacheEvict(value = "portfolio-stats", key = "'all'")
+    })
     public Loan approveLoan(String loanId, LoanDecisionRequest req, String officerId, String traceId) {
         Loan loan = loanRepository.findByIdWithPessimisticLock(loanId)
                 .orElseThrow(() -> new LoanNotFoundException(loanId));
@@ -118,13 +125,18 @@ public class LoanCommandService {
         loan = loanRepository.save(loan);
 
         LoanEvent event = LoanEvent.of("LOAN_APPROVED", loan.getId(), loan.getLoanNumber(),
-                loan.getUserId(), null, traceId);
+                loan.getUserId(), loan.getApplicantEmail(), traceId);
         event.setOfficerId(officerId);
+        event.setPrincipalAmount(loan.getPrincipalAmount());
         outboxRepository.save(outboxRelay.create(event, LOAN_TOPIC));
         return loan;
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "loans", key = "#loanId"),
+        @CacheEvict(value = "portfolio-stats", key = "'all'")
+    })
     public Loan rejectLoan(String loanId, LoanDecisionRequest req, String officerId, String traceId) {
         Loan loan = loanRepository.findByIdWithPessimisticLock(loanId)
                 .orElseThrow(() -> new LoanNotFoundException(loanId));
@@ -140,13 +152,17 @@ public class LoanCommandService {
         loan = loanRepository.save(loan);
 
         LoanEvent event = LoanEvent.of("LOAN_REJECTED", loan.getId(), loan.getLoanNumber(),
-                loan.getUserId(), null, traceId);
+                loan.getUserId(), loan.getApplicantEmail(), traceId);
         event.setRejectionReason(req.getRejectionReason());
         outboxRepository.save(outboxRelay.create(event, LOAN_TOPIC));
         return loan;
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "loans", key = "#loanId"),
+        @CacheEvict(value = "portfolio-stats", key = "'all'")
+    })
     public Loan disburseLoan(String loanId, String officerId, String traceId) {
         return disbursementSaga.execute(loanId, traceId);
     }

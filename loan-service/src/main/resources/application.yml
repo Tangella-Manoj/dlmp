@@ -1,14 +1,15 @@
 server:
   port: ${PORT:8082}
 
+# Defaults target local development; Render overrides via env vars (see render.yaml).
 spring:
   application:
     name: loan-service
 
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:24351}/${MYSQL_DB:defaultdb}?useSSL=true&requireSSL=true&verifyServerCertificate=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
-    username: ${MYSQL_USER}
-    password: ${MYSQL_PASSWORD}
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:dlmp_loans}?useSSL=${MYSQL_SSL:false}&allowPublicKeyRetrieval=true&verifyServerCertificate=false&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USER:dlmp_user}
+    password: ${MYSQL_PASSWORD:dlmp_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       pool-name: LoanPool
@@ -32,11 +33,11 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD}
+      password: ${REDIS_PASSWORD:}
       ssl:
-        enabled: ${REDIS_SSL_ENABLED:true}
+        enabled: ${REDIS_SSL_ENABLED:false}
       timeout: 5000ms
       lettuce:
         pool:
@@ -44,28 +45,43 @@ spring:
           max-idle: 2
 
   kafka:
-    bootstrap-servers: ${KAFKA_SERVERS}
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       retries: 3
-      enable-idempotence: true
       properties:
+        enable.idempotence: true
         max.in.flight.requests.per.connection: 5
+    consumer:
+      group-id: loan-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+    listener:
+      ack-mode: RECORD
     properties:
-      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
-      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
-      sasl.jaas.config: ${KAFKA_SASL_JAAS}
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:PLAIN}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS:}
       ssl.truststore.type: PEM
-      ssl.truststore.certificates: ${AIVEN_CA_CERT}
+      ssl.truststore.certificates: ${AIVEN_CA_CERT:}
       ssl.endpoint.identification.algorithm: ""
+
+  cloud:
+    openfeign:
+      circuitbreaker:
+        enabled: false   # breaker lives on UserActivationChecker via Resilience4j annotation
 
 dlmp:
   jwt:
     secret: ${JWT_SECRET}
   services:
     user-service-url: ${USER_SERVICE_URL:http://localhost:8081}
+  internal:
+    api-key: ${INTERNAL_API_KEY:local-internal-key}
   outbox:
     relay-delay-ms: 5000
 
@@ -74,6 +90,9 @@ management:
     web:
       exposure:
         include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
   tracing:
     sampling:
       probability: 0.1
@@ -93,10 +112,6 @@ resilience4j:
       user-service:
         max-attempts: 3
         wait-duration: 1s
-
-feign:
-  circuitbreaker:
-    enabled: true
 
 springdoc:
   swagger-ui:

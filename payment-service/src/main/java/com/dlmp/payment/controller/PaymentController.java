@@ -1,6 +1,7 @@
 package com.dlmp.payment.controller;
 
 import com.dlmp.common.dto.ApiResponse;
+import com.dlmp.common.security.JwtUserPrincipal;
 import com.dlmp.payment.dto.request.PaymentRequest;
 import com.dlmp.payment.dto.response.PaymentResponse;
 import com.dlmp.payment.service.PaymentService;
@@ -13,6 +14,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,28 +30,39 @@ public class PaymentController {
     @Operation(summary = "Initiate payment — X-Idempotency-Key prevents duplicates")
     public ResponseEntity<ApiResponse<PaymentResponse>> initiate(
             @Valid @RequestBody PaymentRequest req,
-            @RequestHeader("X-User-Id") String userId,
+            @AuthenticationPrincipal JwtUserPrincipal principal,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Trace-Id",        defaultValue = "") String traceId) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created(
-                        paymentService.initiate(req, userId, idempotencyKey, traceId),
+                        paymentService.initiate(req, principal.userId(), principal.email(), idempotencyKey, traceId),
                         "Payment processed"));
     }
 
     @GetMapping("/loan/{loanId}")
-    @Operation(summary = "Get all payments for a loan")
+    @Operation(summary = "Get payments for a loan (own payments; officers/admins see all)")
     public ResponseEntity<ApiResponse<Page<PaymentResponse>>> byLoan(
             @PathVariable String loanId,
+            @AuthenticationPrincipal JwtUserPrincipal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(ApiResponse.ok(
-                paymentService.getByLoanId(loanId, PageRequest.of(page, size, Sort.by("createdAt").descending()))));
+        PageRequest pr = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<PaymentResponse> result = principal.hasAnyRole("LOAN_OFFICER", "ADMIN")
+                ? paymentService.getByLoanId(loanId, pr)
+                : paymentService.getByLoanIdForUser(loanId, principal.userId(), pr);
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
     @GetMapping("/ref/{reference}")
-    @Operation(summary = "Get payment by reference number")
-    public ResponseEntity<ApiResponse<PaymentResponse>> byRef(@PathVariable String reference) {
-        return ResponseEntity.ok(ApiResponse.ok(paymentService.getByRef(reference)));
+    @Operation(summary = "Get payment by reference number (owner or LOAN_OFFICER/ADMIN)")
+    public ResponseEntity<ApiResponse<PaymentResponse>> byRef(
+            @PathVariable String reference,
+            @AuthenticationPrincipal JwtUserPrincipal principal) {
+        PaymentResponse payment = paymentService.getByRef(reference);
+        if (!principal.hasAnyRole("LOAN_OFFICER", "ADMIN")
+                && (payment.getUserId() == null || !payment.getUserId().equals(principal.userId()))) {
+            throw new AccessDeniedException("Not the owner of this payment");
+        }
+        return ResponseEntity.ok(ApiResponse.ok(payment));
     }
 }

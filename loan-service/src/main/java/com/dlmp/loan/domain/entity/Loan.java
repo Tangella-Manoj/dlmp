@@ -44,6 +44,10 @@ public class Loan {
     @Column(name = "user_id", nullable = false, length = 36)
     private String userId;
 
+    /** Denormalized at application time so downstream events can address the borrower. */
+    @Column(name = "applicant_email", length = 100)
+    private String applicantEmail;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "loan_type", nullable = false, length = 20)
     private LoanType loanType;

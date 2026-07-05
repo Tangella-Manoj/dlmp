@@ -8,8 +8,12 @@ spring:
   cloud:
     gateway:
       routes:
+        # Full URLs so scheme+port work everywhere:
+        #   local jars      → http://localhost:8081 (defaults)
+        #   docker-compose  → http://user-service:8081
+        #   Render          → https://dlmp-user-service.onrender.com
         - id: user-service
-          uri: https://${USER_SERVICE_HOST:localhost}
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/v1/auth/**, /api/v1/users/**
           filters:
@@ -19,7 +23,7 @@ spring:
                 fallbackUri: forward:/fallback/user
 
         - id: loan-service
-          uri: https://${LOAN_SERVICE_HOST:localhost}
+          uri: ${LOAN_SERVICE_URL:http://localhost:8082}
           predicates:
             - Path=/api/v1/loans/**
           filters:
@@ -29,7 +33,7 @@ spring:
                 fallbackUri: forward:/fallback/loan
 
         - id: payment-service
-          uri: https://${PAYMENT_SERVICE_HOST:localhost}
+          uri: ${PAYMENT_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/api/v1/payments/**
           filters:
@@ -39,12 +43,12 @@ spring:
                 fallbackUri: forward:/fallback/payment
 
         - id: notification-service
-          uri: https://${NOTIFICATION_SERVICE_HOST:localhost}
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/api/v1/notifications/**
 
         - id: report-service
-          uri: https://${REPORT_SERVICE_HOST:localhost}
+          uri: ${REPORT_SERVICE_URL:http://localhost:8085}
           predicates:
             - Path=/api/v1/reports/**
 
@@ -76,12 +80,13 @@ spring:
 dlmp:
   jwt:
     secret: ${JWT_SECRET}
+  # Consumed by JwtAuthFilter — paths that skip JWT validation at the gateway
   public-paths:
     - /api/v1/auth/register
     - /api/v1/auth/login
     - /api/v1/auth/refresh
-    - /actuator/health
-    - /actuator/prometheus
+    - /actuator
+    - /fallback
 
 resilience4j:
   circuitbreaker:
@@ -104,6 +109,15 @@ resilience4j:
         slidingWindowSize: 10
         waitDurationInOpenState: 60s
         failureRateThreshold: 60
+  # Render free instances cold-start in ~50s; don't trip the breaker on slow first calls
+  timelimiter:
+    instances:
+      user-service:
+        timeoutDuration: 60s
+      loan-service:
+        timeoutDuration: 60s
+      payment-service:
+        timeoutDuration: 60s
 
 management:
   endpoints:

@@ -6,18 +6,24 @@ import com.dlmp.report.repository.LoanStatSnapshotRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+/**
+ * Portfolio analytics — restricted to LOAN_OFFICER / ADMIN.
+ * The five aggregate queries are cheap; the previous @Cacheable on a
+ * ResponseEntity blew up Redis JDK serialization on every call.
+ */
 @RestController
 @RequestMapping("/api/v1/reports")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('LOAN_OFFICER','ADMIN')")
 @Tag(name = "Reports", description = "Portfolio analytics — CQRS read-side materialized views")
 public class ReportController {
 
@@ -25,7 +31,6 @@ public class ReportController {
 
     @GetMapping("/portfolio")
     @Operation(summary = "Portfolio summary — pre-computed from Kafka events")
-    @Cacheable("portfolio-summary")
     public ResponseEntity<ApiResponse<Map<String, Object>>> portfolio() {
         return ResponseEntity.ok(ApiResponse.ok(Map.of(
             "totalLoans",      snapshotRepo.count(),

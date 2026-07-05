@@ -1,14 +1,15 @@
 server:
   port: ${PORT:8083}
 
+# Defaults target local development; Render overrides via env vars (see render.yaml).
 spring:
   application:
     name: payment-service
 
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:24351}/${MYSQL_DB:defaultdb}?useSSL=true&requireSSL=true&verifyServerCertificate=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: ${MYSQL_USER}
-    password: ${MYSQL_PASSWORD}
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:dlmp_payments}?useSSL=${MYSQL_SSL:false}&allowPublicKeyRetrieval=true&verifyServerCertificate=false&serverTimezone=UTC
+    username: ${MYSQL_USER:dlmp_user}
+    password: ${MYSQL_PASSWORD:dlmp_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       pool-name: PaymentPool
@@ -31,37 +32,43 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD}
+      password: ${REDIS_PASSWORD:}
       ssl:
-        enabled: ${REDIS_SSL_ENABLED:true}
+        enabled: ${REDIS_SSL_ENABLED:false}
       timeout: 5000ms
 
   kafka:
-    bootstrap-servers: ${KAFKA_SERVERS}
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
-      enable-idempotence: true
+      properties:
+        enable.idempotence: true
     properties:
-      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
-      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
-      sasl.jaas.config: ${KAFKA_SASL_JAAS}
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:PLAIN}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS:}
       ssl.truststore.type: PEM
-      ssl.truststore.certificates: ${AIVEN_CA_CERT}
+      ssl.truststore.certificates: ${AIVEN_CA_CERT:}
       ssl.endpoint.identification.algorithm: ""
 
 dlmp:
   jwt:
     secret: ${JWT_SECRET}
+  outbox:
+    relay-delay-ms: 5000
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,prometheus
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
   tracing:
     sampling:
       probability: 0.1

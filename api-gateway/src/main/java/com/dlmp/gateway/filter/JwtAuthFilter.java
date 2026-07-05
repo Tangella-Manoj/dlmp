@@ -3,7 +3,7 @@ package com.dlmp.gateway.filter;
 import com.dlmp.common.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cloud.gateway.filter.GatewayFilter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -14,32 +14,42 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * JWT Authentication Filter — runs on every request.
+ * JWT Authentication Filter — runs on every routed request.
  *
+ * - Strips any client-supplied X-User-* headers (spoofing protection)
  * - Extracts Bearer token from Authorization header
  * - Validates with JwtUtil (HS512)
  * - Propagates user context via headers to downstream services
  * - Injects X-Trace-Id for distributed tracing
+ *
+ * Public paths come from dlmp.public-paths in application.yml.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@ConfigurationProperties(prefix = "dlmp")
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private final JwtUtil jwtUtil;
 
-    private static final List<String> PUBLIC_PATHS = List.of(
+    /** Bound from dlmp.public-paths; falls back to sane defaults if empty. */
+    private List<String> publicPaths = new ArrayList<>();
+
+    private static final List<String> DEFAULT_PUBLIC_PATHS = List.of(
         "/api/v1/auth/register",
         "/api/v1/auth/login",
         "/api/v1/auth/refresh",
         "/actuator",
-        "/v3/api-docs",
-        "/swagger-ui"
+        "/fallback"
     );
+
+    public List<String> getPublicPaths() { return publicPaths; }
+    public void setPublicPaths(List<String> publicPaths) { this.publicPaths = publicPaths; }
 
     @Override
     public int getOrder() { return -1; } // Run first
@@ -49,14 +59,19 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         String path = exchange.getRequest().getURI().getPath();
         String traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
-        // Inject trace ID on every request
-        ServerHttpRequest requestWithTrace = exchange.getRequest().mutate()
-                .header("X-Trace-Id", traceId)
-                .build();
+        // Never forward client-supplied identity headers
+        ServerHttpRequest.Builder sanitized = exchange.getRequest().mutate()
+                .headers(h -> {
+                    h.remove("X-User-Id");
+                    h.remove("X-User-Email");
+                    h.remove("X-User-Roles");
+                    h.remove("X-Gateway-Request");
+                })
+                .header("X-Trace-Id", traceId);
 
         // Skip JWT check for public endpoints
         if (isPublicPath(path)) {
-            return chain.filter(exchange.mutate().request(requestWithTrace).build());
+            return chain.filter(exchange.mutate().request(sanitized.build()).build());
         }
 
         // Validate JWT
@@ -79,11 +94,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         String email  = jwtUtil.extractEmail(token);
         List<String> roles = jwtUtil.extractRoles(token);
 
-        ServerHttpRequest enriched = exchange.getRequest().mutate()
+        ServerHttpRequest enriched = sanitized
                 .header("X-User-Id", userId)
                 .header("X-User-Email", email != null ? email : "")
                 .header("X-User-Roles", String.join(",", roles))
-                .header("X-Trace-Id", traceId)
                 .header("X-Gateway-Request", "true")
                 .build();
 
@@ -92,6 +106,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isPublicPath(String path) {
-        return PUBLIC_PATHS.stream().anyMatch(path::startsWith);
+        List<String> paths = (publicPaths == null || publicPaths.isEmpty())
+                ? DEFAULT_PUBLIC_PATHS : publicPaths;
+        return paths.stream().anyMatch(path::startsWith);
     }
 }

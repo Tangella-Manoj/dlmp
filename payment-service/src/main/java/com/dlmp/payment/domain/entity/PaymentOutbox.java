@@ -44,6 +44,9 @@ public class PaymentOutbox {
     @Builder.Default
     private int retryCount = 0;
 
+    @Column(name = "last_error", length = 500)
+    private String lastError;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

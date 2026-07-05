@@ -13,5 +13,6 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
     Optional<Payment> findByPaymentReference(String reference);
     Optional<Payment> findByIdempotencyKey(String key);
     Page<Payment> findByLoanId(String loanId, Pageable pageable);
+    Page<Payment> findByLoanIdAndUserId(String loanId, String userId, Pageable pageable);
     Page<Payment> findByUserId(String userId, Pageable pageable);
 }

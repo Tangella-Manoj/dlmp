@@ -43,16 +43,21 @@ x-mysql-defaults: &mysql-defaults
 x-app-defaults: &app-defaults
   restart: unless-stopped
   networks: [dlmp-internal]
-  environment:
+  environment: &app-env
     MYSQL_USER: ${MYSQL_USER}
     MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    MYSQL_SSL: "false"
     KAFKA_SERVERS: kafka:9092
     KAFKA_SECURITY_PROTOCOL: PLAINTEXT
+    KAFKA_SASL_MECHANISM: PLAIN
+    KAFKA_SASL_JAAS: ""
+    AIVEN_CA_CERT: ""
     REDIS_HOST: redis
     REDIS_PORT: 6379
     REDIS_PASSWORD: ${REDIS_PASSWORD}
     REDIS_SSL_ENABLED: "false"
     JWT_SECRET: ${JWT_SECRET}
+    INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-internal-key}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318/v1/traces}
     CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://yourdomain.com}
     JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
@@ -182,8 +187,10 @@ services:
       context: .
       dockerfile: user-service/Dockerfile
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-users
       MYSQL_PORT: 3306
+      MYSQL_DB: dlmp_users
       MAIL_HOST: smtp.sendgrid.net
       MAIL_PORT: 587
       MAIL_USERNAME: apikey
@@ -211,8 +218,10 @@ services:
       context: .
       dockerfile: loan-service/Dockerfile
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-loans
       MYSQL_PORT: 3306
+      MYSQL_DB: dlmp_loans
       USER_SERVICE_URL: http://user-service:8081
     depends_on:
       mysql-loans:
@@ -233,8 +242,10 @@ services:
       context: .
       dockerfile: payment-service/Dockerfile
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-payments
       MYSQL_PORT: 3306
+      MYSQL_DB: dlmp_payments
     depends_on:
       mysql-payments:
         condition: service_healthy
@@ -252,8 +263,10 @@ services:
       context: .
       dockerfile: notification-service/Dockerfile
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-notifications
       MYSQL_PORT: 3306
+      MYSQL_DB: dlmp_notifications
       MAIL_HOST: smtp.sendgrid.net
       MAIL_PORT: 587
       MAIL_USERNAME: apikey
@@ -277,8 +290,10 @@ services:
       context: .
       dockerfile: report-service/Dockerfile
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-reports
       MYSQL_PORT: 3306
+      MYSQL_DB: dlmp_reports
     depends_on:
       mysql-reports:
         condition: service_healthy
@@ -297,11 +312,12 @@ services:
       dockerfile: api-gateway/Dockerfile
     networks: [dlmp-internal, dlmp-public]
     environment:
-      USER_SERVICE_HOST: user-service
-      LOAN_SERVICE_HOST: loan-service
-      PAYMENT_SERVICE_HOST: payment-service
-      NOTIFICATION_SERVICE_HOST: notification-service
-      REPORT_SERVICE_HOST: report-service
+      <<: *app-env
+      USER_SERVICE_URL: http://user-service:8081
+      LOAN_SERVICE_URL: http://loan-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8083
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      REPORT_SERVICE_URL: http://report-service:8085
     depends_on:
       user-service:
         condition: service_healthy

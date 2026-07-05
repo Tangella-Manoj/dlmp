@@ -1,3 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  DLMP v2.0 — Render Blueprint (free tier)
+#
+#  External managed services (create these first — see docs/RENDER_DEPLOYMENT.md):
+#    • Aiven MySQL   → one database (defaultdb), all services share it with
+#                      per-service Flyway history tables
+#    • Aiven Kafka   → topics: dlmp.loan.events, dlmp.payment.events, dlmp.user.events
+#    • Upstash Redis → TLS enabled
+#
+#  All `sync: false` vars must be filled in the Render dashboard:
+#    MYSQL_PASSWORD, REDIS_PASSWORD, KAFKA_SASL_JAAS, AIVEN_CA_CERT,
+#    JWT_SECRET (same value on every service!), INTERNAL_API_KEY (same on
+#    user+loan), MAIL_* (optional), ADMIN_EMAIL/ADMIN_PASSWORD (optional).
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
 
   - type: web
@@ -14,6 +29,8 @@ services:
         value: "24351"
       - key: MYSQL_DB
         value: defaultdb
+      - key: MYSQL_SSL
+        value: "true"
       - key: MYSQL_USER
         value: avnadmin
       - key: MYSQL_PASSWORD
@@ -37,6 +54,12 @@ services:
       - key: AIVEN_CA_CERT
         sync: false
       - key: JWT_SECRET
+        sync: false
+      - key: INTERNAL_API_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
         sync: false
 
   - type: web
@@ -53,6 +76,8 @@ services:
         value: "24351"
       - key: MYSQL_DB
         value: defaultdb
+      - key: MYSQL_SSL
+        value: "true"
       - key: MYSQL_USER
         value: avnadmin
       - key: MYSQL_PASSWORD
@@ -76,6 +101,8 @@ services:
       - key: AIVEN_CA_CERT
         sync: false
       - key: JWT_SECRET
+        sync: false
+      - key: INTERNAL_API_KEY
         sync: false
       - key: USER_SERVICE_URL
         value: https://dlmp-user-service.onrender.com
@@ -94,6 +121,8 @@ services:
         value: "24351"
       - key: MYSQL_DB
         value: defaultdb
+      - key: MYSQL_SSL
+        value: "true"
       - key: MYSQL_USER
         value: avnadmin
       - key: MYSQL_PASSWORD
@@ -133,18 +162,12 @@ services:
         value: "24351"
       - key: MYSQL_DB
         value: defaultdb
+      - key: MYSQL_SSL
+        value: "true"
       - key: MYSQL_USER
         value: avnadmin
       - key: MYSQL_PASSWORD
         sync: false
-      - key: REDIS_HOST
-        value: happy-sunbird-140234.upstash.io
-      - key: REDIS_PORT
-        value: "6379"
-      - key: REDIS_PASSWORD
-        sync: false
-      - key: REDIS_SSL_ENABLED
-        value: "true"
       - key: KAFKA_SERVERS
         value: dlmp-kafka-dlmp.b.aivencloud.com:24364
       - key: KAFKA_SECURITY_PROTOCOL
@@ -154,6 +177,8 @@ services:
       - key: KAFKA_SASL_JAAS
         sync: false
       - key: AIVEN_CA_CERT
+        sync: false
+      - key: JWT_SECRET
         sync: false
       - key: MAIL_HOST
         value: smtp.sendgrid.net
@@ -184,6 +209,8 @@ services:
         value: "24351"
       - key: MYSQL_DB
         value: defaultdb
+      - key: MYSQL_SSL
+        value: "true"
       - key: MYSQL_USER
         value: avnadmin
       - key: MYSQL_PASSWORD
@@ -217,16 +244,16 @@ services:
     plan: free
     healthCheckPath: /actuator/health
     envVars:
-      - key: USER_SERVICE_HOST
-        value: dlmp-user-service.onrender.com
-      - key: LOAN_SERVICE_HOST
-        value: dlmp-loan-service.onrender.com
-      - key: PAYMENT_SERVICE_HOST
-        value: dlmp-payment-service.onrender.com
-      - key: NOTIFICATION_SERVICE_HOST
-        value: dlmp-notification-service.onrender.com
-      - key: REPORT_SERVICE_HOST
-        value: dlmp-report-service.onrender.com
+      - key: USER_SERVICE_URL
+        value: https://dlmp-user-service.onrender.com
+      - key: LOAN_SERVICE_URL
+        value: https://dlmp-loan-service.onrender.com
+      - key: PAYMENT_SERVICE_URL
+        value: https://dlmp-payment-service.onrender.com
+      - key: NOTIFICATION_SERVICE_URL
+        value: https://dlmp-notification-service.onrender.com
+      - key: REPORT_SERVICE_URL
+        value: https://dlmp-report-service.onrender.com
       - key: REDIS_HOST
         value: happy-sunbird-140234.upstash.io
       - key: REDIS_PORT

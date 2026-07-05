@@ -63,16 +63,16 @@ class PaymentServiceTest {
         PaymentRequest req = buildRequest("24075.00", "18075.00", "6000.00", "0.00", "EMI");
 
         Payment saved = buildPayment("pay-1", "PAY-REF-1", req);
-        when(paymentRepository.save(any())).thenReturn(saved);
+        when(paymentRepository.saveAndFlush(any())).thenReturn(saved);
         when(ledgerRepository.saveAll(any())).thenReturn(List.of());
         when(outboxRepository.save(any())).thenReturn(null);
 
-        PaymentResponse resp = paymentService.initiate(req, "user-1", "idem-key-1", "trace-1");
+        PaymentResponse resp = paymentService.initiate(req, "user-1", "user@test.com", "idem-key-1", "trace-1");
 
         assertThat(resp).isNotNull();
         assertThat(resp.getAmount()).isEqualByComparingTo(new BigDecimal("24075.00"));
         assertThat(resp.isIdempotent()).isFalse();
-        verify(paymentRepository).save(any(Payment.class));
+        verify(paymentRepository).saveAndFlush(any(Payment.class));
         verify(ledgerRepository).saveAll(any());
     }
 
@@ -85,11 +85,11 @@ class PaymentServiceTest {
         when(paymentRepository.findByPaymentReference("PAY-20260618-CACHED")).thenReturn(Optional.of(cached));
 
         PaymentRequest req = buildRequest("1000.00", "1000.00", "0.00", "0.00", "EMI");
-        PaymentResponse resp = paymentService.initiate(req, "user-1", "key-dupe", "trace-2");
+        PaymentResponse resp = paymentService.initiate(req, "user-1", "user@test.com", "key-dupe", "trace-2");
 
         assertThat(resp.isIdempotent()).isTrue();
         assertThat(resp.getPaymentReference()).isEqualTo("PAY-20260618-CACHED");
-        verify(paymentRepository, never()).save(any());  // must not create duplicate
+        verify(paymentRepository, never()).saveAndFlush(any());  // must not create duplicate
     }
 
     // ─── Test 3: Payment with penalty ────────────────────────────────────────
@@ -99,11 +99,11 @@ class PaymentServiceTest {
 
         Payment saved = buildPayment("pay-3", "PAY-PENALTY", req);
         saved.setPenaltyComponent(new BigDecimal("1000.00"));
-        when(paymentRepository.save(any())).thenReturn(saved);
+        when(paymentRepository.saveAndFlush(any())).thenReturn(saved);
         when(ledgerRepository.saveAll(any())).thenReturn(List.of());
         when(outboxRepository.save(any())).thenReturn(null);
 
-        PaymentResponse resp = paymentService.initiate(req, "user-1", "idem-3", "trace-3");
+        PaymentResponse resp = paymentService.initiate(req, "user-1", "user@test.com", "idem-3", "trace-3");
         assertThat(resp).isNotNull();
         assertThat(resp.getPenaltyComponent()).isEqualByComparingTo(new BigDecimal("1000.00"));
     }
@@ -135,7 +135,7 @@ class PaymentServiceTest {
         PaymentRequest req = buildRequest("24075.00", "20000.00", "6000.00", "1000.00", "EMI");
 
         Payment saved = buildPayment("pay-6", "PAY-BALANCED", req);
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
+        when(paymentRepository.saveAndFlush(any(Payment.class))).thenAnswer(inv -> {
             Payment p = inv.getArgument(0);
             // Verify the adjustment was applied
             BigDecimal sum = p.getPrincipalComponent().add(p.getInterestComponent()).add(p.getPenaltyComponent());
@@ -145,7 +145,7 @@ class PaymentServiceTest {
         when(ledgerRepository.saveAll(any())).thenReturn(List.of());
         when(outboxRepository.save(any())).thenReturn(null);
 
-        PaymentResponse resp = paymentService.initiate(req, "user-1", "idem-6", "trace-6");
+        PaymentResponse resp = paymentService.initiate(req, "user-1", "user@test.com", "idem-6", "trace-6");
         assertThat(resp).isNotNull();
     }
 

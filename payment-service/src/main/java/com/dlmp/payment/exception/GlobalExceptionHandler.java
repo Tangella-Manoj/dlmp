@@ -35,6 +35,22 @@ public class GlobalExceptionHandler {
                 .errorCode("VALIDATION_ERROR").path(req.getRequestURI()).fieldErrors(errors).build());
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
+            org.springframework.security.access.AccessDeniedException ex, HttpServletRequest req) {
+        log.warn("Access denied at {}: {}", req.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(403)
+                .body(ApiResponse.error(403, "You do not have permission to perform this action", "ACCESS_DENIED"));
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(
+            org.springframework.dao.DataIntegrityViolationException ex, HttpServletRequest req) {
+        log.warn("Data integrity violation at {}: {}", req.getRequestURI(), ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.error(409, "Duplicate or conflicting payment record", "DUPLICATE_RESOURCE"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex, HttpServletRequest req) {
         log.error("Unhandled: {}", ex.getMessage(), ex);

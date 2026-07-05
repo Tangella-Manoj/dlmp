@@ -31,6 +31,7 @@ class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private UserEventPublisher eventPublisher;
 
     private PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4); // fast for tests
     private JwtUtil jwtUtil = new JwtUtil(
@@ -42,7 +43,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, refreshTokenRepository, passwordEncoder, jwtUtil);
+        authService = new AuthService(userRepository, refreshTokenRepository, passwordEncoder, jwtUtil, eventPublisher);
     }
 
     @Test

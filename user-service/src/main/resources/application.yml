@@ -1,21 +1,22 @@
 server:
   port: ${PORT:8081}
 
+# Defaults target local development (docker-compose / start-services.sh).
+# Production (Render + Aiven + Upstash) overrides every value via env vars — see render.yaml.
 spring:
   application:
     name: user-service
 
   datasource:
-    # db4free.net — free MySQL, single database, all schemas in one DB
-    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:24351}/${MYSQL_DB:defaultdb}?useSSL=true&requireSSL=true&verifyServerCertificate=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
-    username: ${MYSQL_USER}
-    password: ${MYSQL_PASSWORD}
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:dlmp_users}?useSSL=${MYSQL_SSL:false}&allowPublicKeyRetrieval=true&verifyServerCertificate=false&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USER:dlmp_user}
+    password: ${MYSQL_PASSWORD:dlmp_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       pool-name: UserPool
-      maximum-pool-size: 5       # db4free limit — keep small
+      maximum-pool-size: 5       # shared free-tier MySQL — keep small
       minimum-idle: 1
-      connection-timeout: 60000  # db4free is slower, allow extra time
+      connection-timeout: 60000
       idle-timeout: 300000
       max-lifetime: 600000
       auto-commit: false
@@ -26,7 +27,6 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQL8Dialect
         default_batch_fetch_size: 20
 
   flyway:
@@ -37,11 +37,11 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD}
+      password: ${REDIS_PASSWORD:}
       ssl:
-        enabled: ${REDIS_SSL_ENABLED:true}
+        enabled: ${REDIS_SSL_ENABLED:false}
       timeout: 5000ms
       lettuce:
         pool:
@@ -49,18 +49,18 @@ spring:
           max-idle: 2
 
   kafka:
-    bootstrap-servers: ${KAFKA_SERVERS}
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       retries: 3
     properties:
-      security.protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
-      sasl.mechanism: ${KAFKA_SASL_MECHANISM:SCRAM-SHA-256}
-      sasl.jaas.config: ${KAFKA_SASL_JAAS}
+      security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:PLAIN}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS:}
       ssl.truststore.type: PEM
-      ssl.truststore.certificates: ${AIVEN_CA_CERT}
+      ssl.truststore.certificates: ${AIVEN_CA_CERT:}
       ssl.endpoint.identification.algorithm: ""
 
 dlmp:
@@ -68,6 +68,11 @@ dlmp:
     secret: ${JWT_SECRET}
     access-expiry-ms: ${JWT_ACCESS_EXPIRY_MS:86400000}
     refresh-expiry-ms: ${JWT_REFRESH_EXPIRY_MS:604800000}
+  internal:
+    api-key: ${INTERNAL_API_KEY:local-internal-key}
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
 
 management:
   endpoints:
@@ -76,7 +81,7 @@ management:
         include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized
   tracing:
     sampling:
       probability: 0.1   # reduce on free tier

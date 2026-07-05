@@ -38,7 +38,7 @@ public class DlmpEventConsumer {
             handleLoan(event);
         } catch (Exception e) {
             log.error("[KAFKA] Failed loan event at offset={}: {}", offset, e.getMessage());
-            // re-throw so Spring Kafka retries and eventually routes to DLT
+            // re-throw so the DefaultErrorHandler retries with backoff, then skips
             throw new RuntimeException(e);
         }
     }
@@ -60,6 +60,8 @@ public class DlmpEventConsumer {
         try {
             UserEvent event = objectMapper.readValue(payload, UserEvent.class);
             if ("USER_REGISTERED".equals(event.getEventType())) {
+                persistenceService.save(event.getUserId(), "Welcome to DLMP! 🎉",
+                        "Your account has been created. You can now apply for loans and track repayments.", "SYSTEM");
                 emailService.sendWelcomeEmail(event.getEmail(), event.getFirstName());
             }
         } catch (Exception e) {
@@ -89,6 +91,9 @@ public class DlmpEventConsumer {
                         "Your loan of ₹" + e.getPrincipalAmount() + " has been disbursed.", "LOAN");
                 emailService.sendLoanDisbursedEmail(e);
             }
+            case "LOAN_CLOSED" ->
+                persistenceService.save(e.getUserId(), "🎉 Loan Closed — " + e.getLoanNumber(),
+                        "Congratulations! Your loan is fully repaid and closed.", "LOAN");
             default -> log.debug("[NOTIF] Ignoring: {}", e.getEventType());
         }
     }

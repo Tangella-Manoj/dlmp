@@ -10,6 +10,8 @@ import java.util.List;
 @Repository
 public interface PaymentOutboxRepository extends JpaRepository<PaymentOutbox, String> {
 
-    @Query("SELECT o FROM PaymentOutbox o WHERE o.status = 'PENDING' AND o.retryCount < 3 ORDER BY o.createdAt ASC LIMIT :limit")
+    @Query("SELECT o FROM PaymentOutbox o WHERE o.status = 'PENDING' AND o.retryCount < 5 ORDER BY o.createdAt ASC LIMIT :limit")
     List<PaymentOutbox> findPendingEvents(int limit);
+
+    long countByStatus(String status);
 }

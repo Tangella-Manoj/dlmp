@@ -1,7 +1,7 @@
 package com.dlmp.loan.service.saga;
 
 import com.dlmp.common.event.LoanEvent;
-import com.dlmp.loan.client.UserServiceClient;
+import com.dlmp.loan.client.UserActivationChecker;
 import com.dlmp.loan.domain.entity.Loan;
 import com.dlmp.loan.domain.entity.OutboxEvent;
 import com.dlmp.loan.domain.enums.LoanStatus;
@@ -11,27 +11,25 @@ import com.dlmp.loan.repository.LoanRepository;
 import com.dlmp.loan.repository.OutboxEventRepository;
 import com.dlmp.loan.service.command.EmiScheduleService;
 import com.dlmp.loan.service.outbox.OutboxRelayService;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 /**
- * SAGA Orchestrator — Loan Disbursement.
+ * Loan Disbursement orchestration (single local transaction + outbox).
  *
  * Steps:
  *   1. Load + validate loan state (APPROVED required)
- *   2. Check user active via UserService (circuit-breakered)
+ *   2. Check user active via UserService — circuit-breakered in
+ *      {@link UserActivationChecker}, fails CLOSED (no verification → no money)
  *   3. Update loan to ACTIVE + set dates
  *   4. Generate EMI schedule
  *   5. Write OutboxEvent (same transaction → atomic)
  *
- * Compensation:
- *   - On any failure after step 3: revert loan to APPROVED
+ * Any failure rolls the whole transaction back — loan stays APPROVED.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,7 +42,7 @@ public class LoanDisbursementSaga {
     private final OutboxEventRepository outboxRepository;
     private final OutboxRelayService outboxRelay;
     private final EmiScheduleService emiScheduleService;
-    private final UserServiceClient userServiceClient;
+    private final UserActivationChecker userActivationChecker;
 
     @Transactional
     public Loan execute(String loanId, String traceId) {
@@ -58,8 +56,10 @@ public class LoanDisbursementSaga {
             throw new LoanProcessingException("Loan " + loanId + " cannot be disbursed in status: " + loan.getStatus());
         }
 
-        // Step 2: Check user active (with circuit breaker)
-        checkUserActive(loan.getUserId(), traceId);
+        // Step 2: Check user active (circuit-breakered, fail-closed)
+        if (!userActivationChecker.isUserActive(loan.getUserId(), traceId)) {
+            throw new LoanProcessingException("User " + loan.getUserId() + " is not active");
+        }
 
         // Step 3: Update loan
         LocalDate disbursementDate = LocalDate.now();
@@ -80,8 +80,9 @@ public class LoanDisbursementSaga {
         loan = loanRepository.save(loan);
 
         LoanEvent event = LoanEvent.of("LOAN_DISBURSED", loan.getId(), loan.getLoanNumber(),
-                loan.getUserId(), null, traceId);
+                loan.getUserId(), loan.getApplicantEmail(), traceId);
         event.setPrincipalAmount(loan.getPrincipalAmount());
+        event.setEmiAmount(loan.getEmiAmount());
         event.setStatus("ACTIVE");
 
         OutboxEvent outbox = outboxRelay.create(event, KAFKA_LOAN_TOPIC);
@@ -90,29 +91,5 @@ public class LoanDisbursementSaga {
         log.info("[SAGA][DISBURSE] ✅ COMPLETE loanId={}, firstEmi={}, maturity={}",
                 loanId, firstEmiDate, loan.getMaturityDate());
         return loan;
-    }
-
-    @Transactional
-    public void compensate(String loanId) {
-        log.warn("[SAGA][DISBURSE][COMPENSATE] Reverting loanId={}", loanId);
-        loanRepository.findById(loanId).ifPresent(loan -> {
-            loan.setStatus(LoanStatus.APPROVED);
-            loan.setDisbursementDate(null);
-            loan.setFirstEmiDate(null);
-            loan.setMaturityDate(null);
-            loan.getEmiSchedules().clear();
-            loanRepository.save(loan);
-        });
-    }
-
-    @CircuitBreaker(name = "user-service", fallbackMethod = "userActiveFallback")
-    private void checkUserActive(String userId, String traceId) {
-        boolean active = userServiceClient.isUserActive(userId, traceId);
-        if (!active) throw new LoanProcessingException("User " + userId + " is not active");
-    }
-
-    @SuppressWarnings("unused")
-    private void userActiveFallback(String userId, String traceId, Exception ex) {
-        log.warn("[SAGA] Circuit OPEN for userId={}. Proceeding (degraded): {}", userId, ex.getMessage());
     }
 }

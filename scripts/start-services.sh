@@ -10,13 +10,21 @@ mkdir -p "$LOG_DIR" "$PID_DIR"
 # ─── Common env ──────────────────────────────────────────────────────────────
 export MYSQL_USER=dlmp_user
 export MYSQL_PASSWORD=dlmp_password
+export MYSQL_SSL=false
 export KAFKA_SERVERS=localhost:9092
+export KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+export KAFKA_SASL_MECHANISM=PLAIN
+export KAFKA_SASL_JAAS=""
+export AIVEN_CA_CERT=""
 export REDIS_HOST=localhost
 export REDIS_PORT=6379
+export REDIS_PASSWORD=""
+export REDIS_SSL_ENABLED=false
 export ZIPKIN_HOST=localhost
 export MAIL_HOST=localhost
 export MAIL_PORT=1025
 export JWT_SECRET=dlmp-enterprise-jwt-secret-minimum-64-bytes-for-hs512-xxxxxxxxxxxxxxxxxxx
+export INTERNAL_API_KEY=local-internal-key
 export USER_SERVICE_URL=http://localhost:8081
 
 JVM_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"

@@ -35,15 +35,24 @@ x-mysql-defaults: &mysql-defaults
 
 x-app-defaults: &app-defaults
   <<: *service-defaults
-  environment:
+  environment: &app-env
     MYSQL_USER: dlmp_user
     MYSQL_PASSWORD: dlmp_password
     MYSQL_HOST: mysql-users     # overridden per service
+    MYSQL_PORT: 3306
+    MYSQL_SSL: "false"
     KAFKA_SERVERS: kafka:29092
+    KAFKA_SECURITY_PROTOCOL: PLAINTEXT
+    KAFKA_SASL_MECHANISM: PLAIN
+    KAFKA_SASL_JAAS: ""
+    AIVEN_CA_CERT: ""
     REDIS_HOST: redis
     REDIS_PORT: 6379
+    REDIS_PASSWORD: ""
+    REDIS_SSL_ENABLED: "false"
     ZIPKIN_HOST: zipkin
     JWT_SECRET: dlmp-enterprise-jwt-secret-minimum-64-bytes-for-hs512-xxxxxxxxxxxxxxxxxxx
+    INTERNAL_API_KEY: local-internal-key
     JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseG1GC"
   depends_on:
     kafka:
@@ -223,13 +232,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      MYSQL_HOST: mysql-users
-      USER_SERVICE_HOST: user-service
-      LOAN_SERVICE_HOST: loan-service
-      PAYMENT_SERVICE_HOST: payment-service
-      NOTIFICATION_SERVICE_HOST: notification-service
-      REPORT_SERVICE_HOST: report-service
-      KAFKA_SERVERS: kafka:9092
+      <<: *app-env
+      USER_SERVICE_URL: http://user-service:8081
+      LOAN_SERVICE_URL: http://loan-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8083
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      REPORT_SERVICE_URL: http://report-service:8085
     depends_on:
       user-service:
         condition: service_healthy
@@ -248,7 +256,9 @@ services:
     ports:
       - "8081:8081"
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-users
+      MYSQL_DB: dlmp_users
       MAIL_HOST: mailhog
       MAIL_PORT: 1025
     depends_on:
@@ -273,7 +283,9 @@ services:
     ports:
       - "8082:8082"
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-loans
+      MYSQL_DB: dlmp_loans
       USER_SERVICE_URL: http://user-service:8081
     depends_on:
       mysql-loans:
@@ -295,7 +307,9 @@ services:
     ports:
       - "8083:8083"
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-payments
+      MYSQL_DB: dlmp_payments
     depends_on:
       mysql-payments:
         condition: service_healthy
@@ -314,7 +328,9 @@ services:
     ports:
       - "8084:8084"
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-notifications
+      MYSQL_DB: dlmp_notifications
       MAIL_HOST: mailhog
       MAIL_PORT: 1025
     depends_on:
@@ -335,7 +351,9 @@ services:
     ports:
       - "8085:8085"
     environment:
+      <<: *app-env
       MYSQL_HOST: mysql-reports
+      MYSQL_DB: dlmp_reports
     depends_on:
       mysql-reports:
         condition: service_healthy

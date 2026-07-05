@@ -1,5 +1,6 @@
 package com.dlmp.user.service;
 
+import com.dlmp.common.event.UserEvent;
 import com.dlmp.common.security.JwtUtil;
 import com.dlmp.user.domain.entity.RefreshToken;
 import com.dlmp.user.domain.entity.User;
@@ -33,6 +34,7 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final UserEventPublisher eventPublisher;
 
     @Transactional
     public AuthResponse register(RegisterRequest req) {
@@ -55,6 +57,10 @@ public class AuthService {
 
         user = userRepository.save(user);
         log.info("New user registered: id={}, email={}", user.getId(), user.getEmail());
+
+        eventPublisher.publishAfterCommit(UserEvent.of(
+                "USER_REGISTERED", user.getId(), user.getEmail(), user.getFirstName(), null));
+
         return buildAuthResponse(user);
     }
 
@@ -86,6 +92,12 @@ public class AuthService {
 
     @Transactional
     public AuthResponse refreshTokens(String refreshTokenValue) {
+        // Reject anything that is not a validly signed, unexpired refresh JWT
+        // before touching the database.
+        if (!jwtUtil.isValid(refreshTokenValue) || !jwtUtil.isRefreshToken(refreshTokenValue)) {
+            throw new InvalidCredentialsException();
+        }
+
         String hash = sha256(refreshTokenValue);
         RefreshToken rt = refreshTokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new InvalidCredentialsException());

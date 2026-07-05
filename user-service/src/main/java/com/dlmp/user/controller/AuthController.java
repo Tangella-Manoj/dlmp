@@ -1,6 +1,7 @@
 package com.dlmp.user.controller;
 
 import com.dlmp.common.dto.ApiResponse;
+import com.dlmp.common.security.JwtUserPrincipal;
 import com.dlmp.user.dto.request.LoginRequest;
 import com.dlmp.user.dto.request.RegisterRequest;
 import com.dlmp.user.dto.response.AuthResponse;
@@ -12,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -43,10 +45,10 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    @Operation(summary = "Logout — revokes all refresh tokens")
+    @Operation(summary = "Logout — revokes all refresh tokens (requires valid access token)")
     public ResponseEntity<ApiResponse<Void>> logout(
-            @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        if (userId != null) authService.logout(userId);
+            @AuthenticationPrincipal JwtUserPrincipal principal) {
+        authService.logout(principal.userId());
         return ResponseEntity.ok(ApiResponse.ok(null, "Logged out successfully"));
     }
 }

@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -41,6 +42,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ErrorResponse.builder()
                 .success(false).statusCode(400).message("Validation failed")
                 .errorCode("VALIDATION_ERROR").path(req.getRequestURI()).fieldErrors(errors).build());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex, HttpServletRequest req) {
+        log.warn("Access denied at {}: {}", req.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(403)
+                .body(ApiResponse.error(403, "You do not have permission to perform this action", "ACCESS_DENIED"));
     }
 
     @ExceptionHandler(Exception.class)

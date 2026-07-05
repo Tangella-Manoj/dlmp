@@ -45,7 +45,10 @@ public class LoanQueryService {
 
     @Transactional(readOnly = true)
     public Page<LoanResponse> getLoansByStatus(LoanStatus status, Pageable pageable) {
-        return loanRepository.findByStatus(status, pageable).map(loanMapper::toResponse);
+        Page<Loan> page = (status == null)
+                ? loanRepository.findAll(pageable)
+                : loanRepository.findByStatus(status, pageable);
+        return page.map(loanMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
