@@ -97,7 +97,7 @@ make monitoring
 POST /api/v1/auth/register   → returns accessToken + refreshToken
 POST /api/v1/auth/login      → returns accessToken + refreshToken
 POST /api/v1/auth/refresh    → X-Refresh-Token header → new tokens (rotation)
-POST /api/v1/auth/logout     → revokes all refresh tokens
+POST /api/v1/auth/logout     → Bearer token required → revokes all refresh tokens
 ```
 
 Include `Authorization: Bearer <accessToken>` on all protected requests.
@@ -113,9 +113,13 @@ DRAFT → PENDING_REVIEW → [UNDER_REVIEW] → APPROVED → ACTIVE → CLOSED
 ```
 
 1. **Apply** `POST /api/v1/loans/apply` — credit score calculated, EMI quoted
-2. **Approve** `PUT /api/v1/loans/{id}/approve` — officer decision
-3. **Disburse** `PUT /api/v1/loans/{id}/disburse` — SAGA generates EMI schedule
+2. **Approve** `PUT /api/v1/loans/{id}/approve` — requires ROLE_LOAN_OFFICER / ROLE_ADMIN
+3. **Disburse** `PUT /api/v1/loans/{id}/disburse` — requires officer/admin; generates EMI schedule
 4. **Pay EMI** `POST /api/v1/payments/initiate` — with idempotency key
+5. **Auto-close** — payment events flow back via Kafka; the loan closes itself when fully repaid
+
+**Notifications:** `GET /api/v1/notifications/my`, `GET /api/v1/notifications/unread-count`,
+`PUT /api/v1/notifications/{id}/read`, `PUT /api/v1/notifications/read-all`
 
 ---
 
@@ -153,15 +157,22 @@ mvn test -pl loan-service # Test single module
 
 ## ⚙️ Environment Variables
 
-| Variable | Default | Required |
-|----------|---------|----------|
-| `JWT_SECRET` | 64-char string | ✅ Production |
-| `MYSQL_USER` | `dlmp_user` | ✅ |
-| `MYSQL_PASSWORD` | `dlmp_password` | ✅ |
-| `MYSQL_HOST` | `localhost` | per-service |
-| `KAFKA_SERVERS` | `kafka:9092` | ✅ |
-| `REDIS_HOST` | `localhost` | ✅ |
-| `ZIPKIN_HOST` | `localhost` | Optional |
+All defaults target local development; production overrides everything via env vars.
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `JWT_SECRET` | — (required) | identical on ALL services |
+| `INTERNAL_API_KEY` | `local-internal-key` | user↔loan service auth — override in prod |
+| `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_DB` | `localhost` / `3306` / per-service | Aiven values in prod |
+| `MYSQL_USER` / `MYSQL_PASSWORD` | `dlmp_user` / `dlmp_password` | |
+| `KAFKA_SERVERS` | `localhost:9092` | Aiven SASL_SSL in prod |
+| `KAFKA_SECURITY_PROTOCOL` | `PLAINTEXT` | `SASL_SSL` + `KAFKA_SASL_JAAS` + `AIVEN_CA_CERT` in prod |
+| `REDIS_HOST` / `REDIS_PASSWORD` | `localhost` / empty | Upstash + `REDIS_SSL_ENABLED=true` in prod |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | unset | bootstrap ROLE_ADMIN on startup (optional) |
+| `MAIL_ENABLED` / `MAIL_*` | `false` | SMTP email sends (optional) |
+
+**Cloud deployment:** see [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for the
+full Render + Aiven + Upstash runbook.
 
 ---
 

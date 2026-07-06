@@ -75,6 +75,9 @@ dlmp:
     enabled: ${MAIL_ENABLED:false}
 
 management:
+  health:
+    mail:
+      enabled: false   # email is best-effort; an SMTP outage must not fail the health check
   endpoints:
     web:
       exposure:
