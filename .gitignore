@@ -3,6 +3,7 @@
 *.env.local
 *.env.production
 secrets/
+.deploy-secrets
 
 ## ── Build outputs ──────────────────────────────────────────────────────────
 target/

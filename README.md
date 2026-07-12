@@ -171,8 +171,15 @@ All defaults target local development; production overrides everything via env v
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | unset | bootstrap ROLE_ADMIN on startup (optional) |
 | `MAIL_ENABLED` / `MAIL_*` | `false` | SMTP email sends (optional) |
 
-**Cloud deployment:** see [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for the
-full Render + Aiven + Upstash runbook.
+**Cloud deployment (fully automated):**
+
+```bash
+# one-time: paste 3 API tokens (Aiven, Upstash, Render) into .deploy-secrets
+make deploy        # fetches creds → configures Render → deploys → verifies live
+make deploy-smoke  # re-verify the live stack any time
+```
+
+See [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for details.
 
 ---
 

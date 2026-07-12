@@ -53,6 +53,16 @@ urls: ## Print all service URLs
 	@echo "  MailHog:        http://localhost:8025"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# ─── Cloud deploy (Render + Aiven + Upstash — fully automated) ────────────────
+deploy: ## Deploy everything to Render: fetch creds, sync env, deploy, verify
+	python3 scripts/deploy/auto_deploy.py
+
+deploy-check: ## Verify the three provider API tokens work (no changes made)
+	python3 scripts/deploy/auto_deploy.py --check
+
+deploy-smoke: ## Smoke-test the live Render stack
+	python3 scripts/deploy/auto_deploy.py --smoke
+
 # ─── Production ───────────────────────────────────────────────────────────────
 prod-build: ## Build production Docker images
 	docker compose -f docker-compose.prod.yml build --parallel
