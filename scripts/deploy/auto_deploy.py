@@ -23,6 +23,7 @@ three API tokens. Everything else is automatic. .deploy-secrets is gitignored.
 import argparse
 import base64
 import json
+import os
 import secrets as pysecrets
 import subprocess
 import sys
@@ -93,6 +94,7 @@ def load_secrets() -> dict:
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 cfg[k.strip()] = v.strip()
+                os.environ[k.strip()] = v.strip()
     return cfg
 
 
@@ -142,30 +144,83 @@ class Aiven:
         _, body = http("GET", f"{self.BASE}/project/{self.project}/service", token=self.auth)
         return body.get("services", [])
 
+    def power_on(self, service_name: str) -> None:
+        """Power on a service that is in POWEROFF state via the Aiven REST API."""
+        print(f"{INFO} Powering on Aiven service '{service_name}' (was POWEROFF) …")
+        code, body = http(
+            "PUT",
+            f"{self.BASE}/project/{self.project}/service/{service_name}",
+            token=self.auth,
+            body={"powered": True},
+            ok_codes=(200, 201, 202),
+        )
+        if code not in (200, 201, 202):
+            die(f"Could not power on '{service_name}' via Aiven API (HTTP {code}): {body}\n"
+                f"   → Go to https://console.aiven.io and power it on manually.")
+        print(f"{OK} Power-on request accepted for '{service_name}'")
+
+    def allow_all_ips(self, service_name: str) -> None:
+        """Open the Aiven service to all IPs (0.0.0.0/0).
+        Required so Render (dynamic IPs) can connect. Safe for portfolio use."""
+        url = f"{self.BASE}/project/{self.project}/service/{service_name}"
+        # Try PATCH first (partial update), then PUT with both formats
+        for method, body in (
+            ("PATCH", {"ip_filter": [{"network": "0.0.0.0/0", "description": "Render"}]}),
+            ("PUT",   {"ip_filter": [{"network": "0.0.0.0/0", "description": "Render"}]}),
+            ("PUT",   {"ip_filter": ["0.0.0.0/0"]}),
+        ):
+            code, resp = http(method, url, token=self.auth, body=body,
+                              ok_codes=(200, 201, 202, 400, 405))
+            if code in (200, 201, 202):
+                print(f"{OK} Aiven '{service_name}' IP allowlist opened to 0.0.0.0/0")
+                return
+        print(f"{WARN} Could not open IP allowlist automatically (all methods returned error). "
+              f"Fix manually: Aiven → dlmp-db → Service settings → Allowed IP ranges → add 0.0.0.0/0")
+
     def find(self, service_type: str):
         matches = [s for s in self.services() if s.get("service_type") == service_type]
         if not matches:
             die(f"No Aiven {service_type} service found in project '{self.project}'. "
                 f"Create one (free plan) in the Aiven console first.")
         svc = matches[0]
-        if svc.get("state") != "RUNNING":
-            print(f"{WARN} Aiven {service_type} '{svc['service_name']}' state={svc.get('state')} — waiting up to 5 min")
-            for _ in range(30):
+        state = svc.get("state", "")
+        if state == "POWEROFF":
+            self.power_on(svc["service_name"])
+        if state != "RUNNING":
+            print(f"{WARN} Aiven {service_type} '{svc['service_name']}' state={state} — waiting up to 10 min …")
+            for i in range(60):  # 60 × 10 s = 10 min
                 time.sleep(10)
                 svc = [s for s in self.services() if s["service_name"] == svc["service_name"]][0]
-                if svc.get("state") == "RUNNING":
+                state = svc.get("state", "")
+                if state == "RUNNING":
+                    print(f"{OK} Aiven {service_type} is RUNNING  ({(i + 1) * 10}s)")
                     break
+                if (i + 1) % 6 == 0:
+                    print(f"   … still {state} ({(i + 1) * 10}s elapsed)")
             else:
-                die(f"Aiven {service_type} never reached RUNNING state.")
+                die(f"Aiven {service_type} '{svc['service_name']}' never reached RUNNING state after 10 min.\n"
+                    f"   Current state: {state}. Check the Aiven console.")
         return svc
 
     def mysql_creds(self) -> dict:
         svc = self.find("mysql")
+        name = svc["service_name"]
+        # Open IP allowlist so Render's dynamic IPs are allowed to connect
+        self.allow_all_ips(name)
         p = svc.get("service_uri_params", {})
         password = p.get("password") or next(
             (u["password"] for u in svc.get("users", []) if u.get("username") == p.get("user", "avnadmin")), None)
-        if not (p.get("host") and p.get("port") and password):
-            die("Could not extract MySQL credentials from Aiven service response.")
+        
+        # Aiven API might redact the password for security
+        if not password or password == "<redacted>":
+            password = os.environ.get("MYSQL_PASSWORD")
+            if not password:
+                die(f"Aiven API redacted the MySQL password. "
+                    f"Please add MYSQL_PASSWORD=your_actual_password to your .deploy-secrets file.")
+                
+        if not (p.get("host") and p.get("port")):
+            die("Could not extract MySQL host/port from Aiven service response.")
+            
         creds = {"host": p["host"], "port": p["port"], "db": p.get("dbname", "defaultdb"),
                  "user": p.get("user", "avnadmin"), "password": password}
         print(f"{OK} Aiven MySQL: {creds['host']}:{creds['port']}/{creds['db']}")
@@ -174,6 +229,15 @@ class Aiven:
     def kafka_creds(self) -> dict:
         svc = self.find("kafka")
         name = svc["service_name"]
+        p = svc.get("service_uri_params", {})
+        password = p.get("password") or next(
+            (u["password"] for u in svc.get("users", []) if u.get("username") == p.get("user", "avnadmin")), None)
+            
+        if not password or password == "<redacted>":
+            password = os.environ.get("KAFKA_PASSWORD")
+            if not password:
+                die(f"Aiven API redacted the Kafka password. "
+                    f"Please add KAFKA_PASSWORD=your_actual_password to your .deploy-secrets file.")
 
         def sasl_component(s):
             return next((c for c in s.get("components", [])
@@ -320,16 +384,35 @@ class Render:
         if code not in (200, 201):
             die(f"Failed to set env vars on {service_id}: {body}")
 
+    @staticmethod
+    def _unwrap(obj):
+        """Render sometimes wraps payloads ({'deploy': {...}}); normalize."""
+        if isinstance(obj, dict):
+            return obj.get("deploy", obj)
+        return obj
+
+    def latest_deploy(self, service_id: str):
+        _, body = http("GET", f"{self.BASE}/services/{service_id}/deploys?limit=1", token=self.auth)
+        if isinstance(body, list) and body:
+            return self._unwrap(body[0]).get("id")
+        return None
+
     def deploy(self, service_id: str) -> str:
+        # The git push (autoDeploy=yes) may already have started a deploy —
+        # a conflicting trigger is fine, we then attach to the running one.
         code, body = http("POST", f"{self.BASE}/services/{service_id}/deploys",
-                          token=self.auth, body={"clearCache": "do_not_clear"})
-        if code not in (200, 201, 202):
-            die(f"Failed to trigger deploy on {service_id}: {body}")
-        return body["id"]
+                          token=self.auth, body={"clearCache": "do_not_clear"},
+                          ok_codes=(200, 201, 202, 400, 409, 429))
+        deploy_id = self._unwrap(body).get("id") if isinstance(body, dict) else None
+        if not deploy_id:
+            deploy_id = self.latest_deploy(service_id)
+        if not deploy_id:
+            die(f"Could not trigger or find a deploy for {service_id}: {body}")
+        return deploy_id
 
     def deploy_status(self, service_id: str, deploy_id: str) -> str:
         _, body = http("GET", f"{self.BASE}/services/{service_id}/deploys/{deploy_id}", token=self.auth)
-        return body.get("status", "unknown")
+        return self._unwrap(body).get("status", "unknown")
 
 
 # ─── pipeline ─────────────────────────────────────────────────────────────────
