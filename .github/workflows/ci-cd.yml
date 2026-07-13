@@ -8,9 +8,23 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/dlmp
 
 jobs:
+  # ─── Stage 0: Compute a registry-safe (lowercase) image prefix ──────────────
+  # GHCR requires lowercase repository paths; github.repository_owner can be
+  # mixed-case (e.g. "Tangella-Manoj"). Computing it once here and reusing the
+  # output guarantees build-push and security-scan always reference the same
+  # tag — a prior version hardcoded the mixed-case form in security-scan,
+  # which pointed at an image that was never actually pushed.
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      image_prefix: ${{ steps.vars.outputs.image_prefix }}
+    steps:
+      - id: vars
+        run: echo "image_prefix=$(echo '${{ github.repository_owner }}/dlmp' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
   # ─── Stage 1: Tests ─────────────────────────────────────────────────────────
   test:
     name: Unit Tests
@@ -38,7 +52,7 @@ jobs:
   # ─── Stage 2: Build & Push Docker images ────────────────────────────────────
   build-push:
     name: Build & Push Images
-    needs: test
+    needs: [test, prepare]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     permissions:
@@ -77,7 +91,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_prefix }}-${{ matrix.service }}
           tags: |
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
@@ -96,15 +110,28 @@ jobs:
   # ─── Stage 3: Security Scan ─────────────────────────────────────────────────
   security-scan:
     name: Trivy Security Scan
-    needs: build-push
+    needs: [build-push, prepare]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
 
     steps:
+      # Authenticated pulls avoid GHCR's anonymous rate limits for both the
+      # scanned image and Trivy's own vulnerability-DB OCI artifact.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Scan api-gateway image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api-gateway:latest
+          image-ref: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_prefix }}-api-gateway:latest
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -120,13 +147,19 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
-  # ─── Stage 4: Deploy to Production ──────────────────────────────────────────
+  # ─── Stage 4: Deploy to Production (optional VPS/SSH path) ──────────────────
+  # This project's live deployment is Render, driven by `make deploy`
+  # (scripts/deploy/auto_deploy.py) — Render builds and deploys directly from
+  # GitHub independently of this workflow. This stage is an alternate,
+  # opt-in path for self-hosting on your own VPS via docker-compose.prod.yml;
+  # it's automatically skipped (not failed) unless you configure the
+  # PROD_SERVER_* secrets in the repo settings.
   deploy:
-    name: Deploy to Production
+    name: Deploy to Production (VPS — optional)
     needs: [build-push, security-scan]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production          # requires manual approval in GitHub
+    if: github.ref == 'refs/heads/main' && secrets.PROD_SERVER_HOST != ''
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
@@ -162,12 +195,12 @@ jobs:
               && echo "✅ Deployment successful" \
               || (echo "❌ Health check failed" && exit 1)
 
-  # ─── Stage 5: Notify on Failure ─────────────────────────────────────────────
+  # ─── Stage 5: Notify on Failure (optional — requires SENDGRID_API_KEY) ──────
   notify-failure:
     name: Notify on Failure
     needs: [test, build-push, security-scan, deploy]
     runs-on: ubuntu-latest
-    if: failure() && github.ref == 'refs/heads/main'
+    if: failure() && github.ref == 'refs/heads/main' && secrets.SENDGRID_API_KEY != ''
     steps:
       - name: Send failure notification via SendGrid
         run: |
