@@ -27,7 +27,7 @@ export function AuthLayout({ children, title, subtitle }: { children: ReactNode;
 
         <div className="relative space-y-10">
           <div>
-            <h1 className="font-display text-4xl font-bold leading-tight">
+            <h1 className="font-display text-4xl font-bold leading-tight text-white">
               Loans made
               <br />
               simple.
