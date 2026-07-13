@@ -63,6 +63,15 @@ deploy-check: ## Verify the three provider API tokens work (no changes made)
 deploy-smoke: ## Smoke-test the live Render stack
 	python3 scripts/deploy/auto_deploy.py --smoke
 
+deploy-frontend: ## Deploy frontend/ to Vercel (needs VERCEL_TOKEN in .deploy-secrets)
+	python3 scripts/deploy/deploy_frontend.py
+
+deploy-frontend-check: ## Verify the Vercel token works (no changes made)
+	python3 scripts/deploy/deploy_frontend.py --check
+
+update-cors: ## Add an origin to the gateway's CORS allowlist and redeploy (make update-cors ORIGIN=https://x.vercel.app)
+	python3 scripts/deploy/update_cors.py $(ORIGIN)
+
 # ─── Production ───────────────────────────────────────────────────────────────
 prod-build: ## Build production Docker images
 	docker compose -f docker-compose.prod.yml build --parallel
