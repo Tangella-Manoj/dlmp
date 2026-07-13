@@ -131,13 +131,22 @@ Then:   python3 scripts/deploy/deploy_frontend.py
     r = run(["npx", "--yes", "vercel", "--prod", "--yes", "--token", token], capture_output=True)
     if r.returncode != 0:
         die(f"Deployment failed: {r.stderr or r.stdout}")
-    # The deployment URL is the last https:// line Vercel prints (other lines
-    # are build/env-check chatter) — searching beats assuming it's the last
-    # line of output outright, which broke when that line wasn't the URL.
-    url = next(
-        (line.strip() for line in reversed(r.stdout.splitlines()) if line.strip().startswith("https://")),
-        None,
-    )
+    # Vercel CLI's output format isn't stable across invocations — sometimes a
+    # plain "https://..." line, sometimes a JSON blob (seen when redeploying
+    # an already-linked project). Try JSON first, fall back to line-scanning.
+    url = None
+    try:
+        payload = json.loads(r.stdout)
+        url = payload.get("deployment", {}).get("url")
+        if url and not url.startswith("http"):
+            url = f"https://{url}"
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    if not url:
+        url = next(
+            (line.strip() for line in reversed(r.stdout.splitlines()) if line.strip().startswith("https://")),
+            None,
+        )
     if not url:
         die(f"Could not find deployment URL in Vercel output:\n{r.stdout}")
     print(f"{OK} Deployed: {url}")
