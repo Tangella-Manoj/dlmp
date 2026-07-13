@@ -23,6 +23,7 @@ export function NotificationsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["notifications", "my", page],
     queryFn: () => notificationsApi.my(page, 20),
+    refetchInterval: 10_000,
   });
 
   const markRead = useMutation({

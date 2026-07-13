@@ -127,6 +127,9 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
 
 logging:
   level:

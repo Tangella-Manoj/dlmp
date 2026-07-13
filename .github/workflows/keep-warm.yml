@@ -1,0 +1,43 @@
+name: DLMP — Keep Render services warm
+
+# Render's free tier spins a service down after ~15 min of no traffic; the
+# next request then pays a full JVM cold start (measured up to 220s for
+# user-service). Pinging every 10 minutes keeps all six services warm for
+# anyone actively using/demoing the app, so requests hit the ~0.5s warm
+# baseline instead of a multi-minute cold start.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    name: Ping health endpoints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping all six services
+        run: |
+          set +e
+          services=(
+            "dlmp-gateway"
+            "dlmp-user-service"
+            "dlmp-loan-service"
+            "dlmp-payment-service"
+            "dlmp-notification-service"
+            "dlmp-report-service"
+          )
+          fail=0
+          for svc in "${services[@]}"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+              "https://${svc}.onrender.com/actuator/health")
+            if [ "$code" = "200" ]; then
+              echo "✅ $svc → $code"
+            else
+              echo "⚠️  $svc → $code (may still be waking up)"
+              fail=1
+            fi
+          done
+          # Don't fail the workflow on a slow wake-up — this runs every 10
+          # min anyway and a single miss just means one cold request for
+          # a real user. Only the ping itself matters, not a green check.
+          exit 0

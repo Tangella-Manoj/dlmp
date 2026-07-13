@@ -85,7 +85,7 @@ management:
       show-details: when_authorized
   tracing:
     sampling:
-      probability: 0.1   # reduce on free tier
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
 
 springdoc:
   api-docs:

@@ -18,16 +18,20 @@ export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
+  // Notifications are created from Kafka events (loan/payment actions), so
+  // they lag the action that triggered them by a few seconds — polling
+  // surfaces new ones without the user having to refresh the page.
   const { data: unread = 0 } = useQuery({
     queryKey: ["notifications", "unread-count"],
     queryFn: notificationsApi.unreadCount,
-    refetchInterval: 20_000,
+    refetchInterval: 10_000,
   });
 
   const { data: page } = useQuery({
     queryKey: ["notifications", "my"],
     queryFn: () => notificationsApi.my(0, 8),
     enabled: open,
+    refetchInterval: open ? 10_000 : false,
   });
 
   const markAllRead = useMutation({

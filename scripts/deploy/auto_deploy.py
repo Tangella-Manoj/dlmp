@@ -465,6 +465,11 @@ def build_env_maps(cfg, mysql, kafka, redis, urls) -> dict:
         "KAFKA_SERVERS": kafka["servers"], "KAFKA_SECURITY_PROTOCOL": "SASL_SSL",
         "KAFKA_SASL_MECHANISM": "SCRAM-SHA-256", "KAFKA_SASL_JAAS": jaas,
         "AIVEN_CA_CERT": kafka["ca"], "JWT_SECRET": cfg["JWT_SECRET"],
+        # No Zipkin collector exists in this environment — exporting spans just
+        # burns CPU on retries against an unreachable localhost:9411 and spams
+        # logs. Sampling stays at the app default (0.1) for local dev via
+        # docker-compose's real Zipkin container.
+        "TRACING_SAMPLING_PROBABILITY": "0",
     }
     redis_env = {
         "REDIS_HOST": redis["host"], "REDIS_PORT": redis["port"],
@@ -492,6 +497,7 @@ def build_env_maps(cfg, mysql, kafka, redis, urls) -> dict:
         "dlmp-report-service": {**common, **redis_env},
         "dlmp-gateway": {**redis_env,
                          "JWT_SECRET": cfg["JWT_SECRET"],
+                         "TRACING_SAMPLING_PROBABILITY": "0",
                          "USER_SERVICE_URL": urls["dlmp-user-service"],
                          "LOAN_SERVICE_URL": urls["dlmp-loan-service"],
                          "PAYMENT_SERVICE_URL": urls["dlmp-payment-service"],

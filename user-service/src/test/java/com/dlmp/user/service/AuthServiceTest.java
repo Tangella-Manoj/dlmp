@@ -6,8 +6,10 @@ import com.dlmp.user.domain.enums.UserRole;
 import com.dlmp.user.dto.request.LoginRequest;
 import com.dlmp.user.dto.request.RegisterRequest;
 import com.dlmp.user.dto.response.AuthResponse;
+import com.dlmp.user.domain.entity.OutboxEvent;
 import com.dlmp.user.exception.DuplicateEmailException;
 import com.dlmp.user.exception.InvalidCredentialsException;
+import com.dlmp.user.repository.OutboxEventRepository;
 import com.dlmp.user.repository.RefreshTokenRepository;
 import com.dlmp.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +33,8 @@ class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
-    @Mock private UserEventPublisher eventPublisher;
+    @Mock private OutboxEventRepository outboxRepository;
+    @Mock private OutboxRelayService outboxRelay;
 
     private PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4); // fast for tests
     private JwtUtil jwtUtil = new JwtUtil(
@@ -43,7 +46,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, refreshTokenRepository, passwordEncoder, jwtUtil, eventPublisher);
+        authService = new AuthService(userRepository, refreshTokenRepository, outboxRepository, outboxRelay, passwordEncoder, jwtUtil);
     }
 
     @Test

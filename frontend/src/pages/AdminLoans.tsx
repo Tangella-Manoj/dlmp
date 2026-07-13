@@ -29,6 +29,10 @@ export function AdminLoansPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["loans", "admin-list", filter, page],
     queryFn: () => loansApi.list(filter === "ALL" ? undefined : filter, page, 20),
+    // Light polling so a second officer/customer's concurrent action (a new
+    // application, another officer's decision) shows up without a manual
+    // refresh — this is a shared queue, not single-user state.
+    refetchInterval: 15_000,
   });
 
   const loans = data?.content ?? [];

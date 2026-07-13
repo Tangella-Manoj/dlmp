@@ -11,6 +11,7 @@ import com.dlmp.user.dto.response.UserResponse;
 import com.dlmp.user.exception.DuplicateEmailException;
 import com.dlmp.user.exception.InvalidCredentialsException;
 import com.dlmp.user.exception.UserNotFoundException;
+import com.dlmp.user.repository.OutboxEventRepository;
 import com.dlmp.user.repository.RefreshTokenRepository;
 import com.dlmp.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,11 +31,14 @@ import java.util.List;
 @Slf4j
 public class AuthService {
 
+    private static final String USER_TOPIC = "dlmp.user.events";
+
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final OutboxEventRepository outboxRepository;
+    private final OutboxRelayService outboxRelay;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final UserEventPublisher eventPublisher;
 
     @Transactional
     public AuthResponse register(RegisterRequest req) {
@@ -58,8 +62,11 @@ public class AuthService {
         user = userRepository.save(user);
         log.info("New user registered: id={}, email={}", user.getId(), user.getEmail());
 
-        eventPublisher.publishAfterCommit(UserEvent.of(
-                "USER_REGISTERED", user.getId(), user.getEmail(), user.getFirstName(), null));
+        // Outbox: written in the same transaction/DB round-trip as the user
+        // row, published by the scheduled relay — Kafka I/O never sits in
+        // this request's critical path.
+        UserEvent event = UserEvent.of("USER_REGISTERED", user.getId(), user.getEmail(), user.getFirstName(), null);
+        outboxRepository.save(outboxRelay.create(event, USER_TOPIC));
 
         return buildAuthResponse(user);
     }

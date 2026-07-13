@@ -9,14 +9,21 @@ import { formatCurrency } from "@/lib/format";
 import { LOAN_STATUSES } from "@/types/domain";
 
 export function AdminReportsPage() {
+  // Report data is CQRS-materialized from Kafka events (report-service never
+  // queries the operational databases directly), so it's inherently a few
+  // seconds behind the source of truth. There's no mutation here to hang a
+  // one-shot invalidation off of — a light poll while this page is open is
+  // the correct way to keep it current instead of looking permanently stale.
   const portfolioQuery = useQuery({
     queryKey: ["reports", "portfolio"],
     queryFn: reportsApi.portfolio,
+    refetchInterval: 10000,
   });
 
   const loansQuery = useQuery({
     queryKey: ["reports", "loans", "all"],
     queryFn: () => reportsApi.loans(undefined, 0, 200),
+    refetchInterval: 10000,
   });
 
   const statusCounts = useMemo(() => {

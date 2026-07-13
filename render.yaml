@@ -55,6 +55,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: TRACING_SAMPLING_PROBABILITY
+        value: "0"
       - key: INTERNAL_API_KEY
         sync: false
       - key: ADMIN_EMAIL
@@ -102,6 +104,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: TRACING_SAMPLING_PROBABILITY
+        value: "0"
       - key: INTERNAL_API_KEY
         sync: false
       - key: USER_SERVICE_URL
@@ -147,6 +151,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: TRACING_SAMPLING_PROBABILITY
+        value: "0"
 
   - type: web
     name: dlmp-notification-service
@@ -180,6 +186,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: TRACING_SAMPLING_PROBABILITY
+        value: "0"
       - key: MAIL_HOST
         value: smtp.sendgrid.net
       - key: MAIL_PORT
@@ -235,6 +243,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: TRACING_SAMPLING_PROBABILITY
+        value: "0"
 
   - type: web
     name: dlmp-gateway
@@ -264,5 +274,7 @@ services:
         value: "true"
       - key: JWT_SECRET
         sync: false
+      - key: TRACING_SAMPLING_PROBABILITY
+        value: "0"
       - key: CORS_ALLOWED_ORIGINS
         value: https://dlmp-gateway.onrender.com

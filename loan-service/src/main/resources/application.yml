@@ -96,7 +96,7 @@ management:
       show-details: when_authorized
   tracing:
     sampling:
-      probability: 0.1
+      probability: ${TRACING_SAMPLING_PROBABILITY:0.1}
 
 resilience4j:
   circuitbreaker:

@@ -32,27 +32,39 @@ export function LoanDetailPage() {
 
   const isOfficer = session?.role === "ROLE_ADMIN" || session?.role === "ROLE_LOAN_OFFICER";
 
+  // Payments are applied to the loan asynchronously (payment-service's outbox
+  // relay -> Kafka -> loan-service's consumer), typically within ~5-10s but
+  // not instantly. A one-shot invalidate right after paying often refetches
+  // before that's landed, showing no visible change. Polling while the loan
+  // is ACTIVE (the only state where this async update can happen) closes
+  // that gap without requiring a manual refresh.
   const loanQuery = useQuery({
     queryKey: ["loans", loanId],
     queryFn: () => loansApi.getById(loanId!),
     enabled: !!loanId,
+    refetchInterval: (query) => (query.state.data?.status === "ACTIVE" ? 4000 : false),
   });
 
   const scheduleQuery = useQuery({
     queryKey: ["loans", loanId, "schedule"],
     queryFn: () => loansApi.emiSchedule(loanId!),
     enabled: !!loanId && loanQuery.data?.status !== "PENDING_REVIEW" && loanQuery.data?.status !== "REJECTED",
+    refetchInterval: loanQuery.data?.status === "ACTIVE" ? 4000 : false,
   });
 
   const paymentsQuery = useQuery({
     queryKey: ["payments", "loan", loanId],
     queryFn: () => paymentsApi.byLoan(loanId!, 0, 10),
     enabled: !!loanId,
+    refetchInterval: loanQuery.data?.status === "ACTIVE" ? 6000 : false,
   });
 
   function invalidateAll() {
     qc.invalidateQueries({ queryKey: ["loans"] });
     qc.invalidateQueries({ queryKey: ["payments", "loan", loanId] });
+    // Best-effort — report-service lags behind Kafka, so this may still
+    // refetch pre-update data; AdminReports' own polling is the real fix.
+    qc.invalidateQueries({ queryKey: ["reports"] });
   }
 
   const approveMutation = useMutation({
