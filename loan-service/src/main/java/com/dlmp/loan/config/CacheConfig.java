@@ -29,9 +29,15 @@ public class CacheConfig {
         ObjectMapper mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        // NON_FINAL (not EVERYTHING): this serializer is shared across every
+        // cache with a generic Object value type, so it still needs type info
+        // to deserialize polymorphic DTOs correctly — but EVERYTHING embeds an
+        // "@class" marker on every field, including final types (String,
+        // BigDecimal, LocalDate, Integer...) that can never be polymorphic,
+        // needlessly bloating every cached payload.
         mapper.activateDefaultTyping(
                 BasicPolymorphicTypeValidator.builder().allowIfBaseType(Object.class).build(),
-                ObjectMapper.DefaultTyping.EVERYTHING,
+                ObjectMapper.DefaultTyping.NON_FINAL,
                 JsonTypeInfo.As.PROPERTY);
         GenericJackson2JsonRedisSerializer json = new GenericJackson2JsonRedisSerializer(mapper);
 

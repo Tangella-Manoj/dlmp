@@ -66,6 +66,10 @@ public class DlmpEventConsumer {
             }
         } catch (Exception e) {
             log.error("[KAFKA] Failed user event: {}", e.getMessage());
+            // Re-throw for consistency with onLoanEvent/onPaymentEvent so the
+            // configured DefaultErrorHandler retries before giving up, instead of
+            // silently losing the welcome notification/email on a transient error.
+            throw new RuntimeException(e);
         }
     }
 

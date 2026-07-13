@@ -5,6 +5,7 @@ import com.dlmp.common.dto.ErrorResponse;
 import com.dlmp.common.exception.ServiceException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
@@ -42,6 +43,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ErrorResponse.builder()
                 .success(false).statusCode(400).message("Validation failed")
                 .errorCode("VALIDATION_ERROR").path(req.getRequestURI()).fieldErrors(errors).build());
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest req) {
+        log.warn("Data integrity violation at {}: {}", req.getRequestURI(), ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(400)
+                .body(ApiResponse.error(400, "Invalid or out-of-range request data", "INVALID_DATA"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

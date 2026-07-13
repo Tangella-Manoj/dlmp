@@ -45,9 +45,12 @@ public class LoanCommandService {
         try { type = LoanType.valueOf(req.getLoanType()); }
         catch (Exception e) { throw new LoanProcessingException("Invalid loan type: " + req.getLoanType()); }
 
-        // Validate amount/tenure bounds
-        if (req.getPrincipalAmount().longValue() < type.getMinAmount() ||
-            req.getPrincipalAmount().longValue() > type.getMaxAmount()) {
+        // Validate amount/tenure bounds. BigDecimal.longValue() silently truncates
+        // (never throws) for a value that doesn't fit in a long, so an
+        // astronomically large amount could otherwise wrap around and slip past
+        // this check — compare as BigDecimal instead.
+        if (req.getPrincipalAmount().compareTo(BigDecimal.valueOf(type.getMinAmount())) < 0 ||
+            req.getPrincipalAmount().compareTo(BigDecimal.valueOf(type.getMaxAmount())) > 0) {
             throw new LoanProcessingException(String.format("Amount for %s must be ₹%,d – ₹%,d",
                     type, type.getMinAmount(), type.getMaxAmount()));
         }

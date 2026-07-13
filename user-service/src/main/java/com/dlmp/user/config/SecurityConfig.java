@@ -35,7 +35,11 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
+        // Strength 10 (Spring Security's own default) instead of 12: cost 12 is
+        // 4x the hashing work of 10 and runs synchronously on every login/register
+        // request thread — a real, avoidable latency cost on a shared-CPU
+        // free-tier instance, for a security margin most threat models don't need.
+        return new BCryptPasswordEncoder(10);
     }
 
     @Bean

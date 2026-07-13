@@ -108,6 +108,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private boolean isPublicPath(String path) {
         List<String> paths = (publicPaths == null || publicPaths.isEmpty())
                 ? DEFAULT_PUBLIC_PATHS : publicPaths;
-        return paths.stream().anyMatch(path::startsWith);
+        // Exact-segment match, not raw prefix: a plain startsWith would let a
+        // future endpoint like /api/v1/auth/registered-devices silently skip JWT
+        // validation just because it shares a string prefix with
+        // /api/v1/auth/register. "/actuator/health" still matches "/actuator".
+        return paths.stream().anyMatch(p -> path.equals(p) || path.startsWith(p + "/"));
     }
 }

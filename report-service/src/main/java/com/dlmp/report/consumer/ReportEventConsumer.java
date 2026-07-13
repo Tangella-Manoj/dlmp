@@ -43,7 +43,10 @@ public class ReportEventConsumer {
             }
         } catch (Exception e) {
             log.error("[REPORT] Materialize failed topic={} offset={}: {}", topic, offset, e.getMessage());
-            // Don't re-throw: report failures must not impact event processing of other consumers
+            // Re-throw so the per-listener DefaultErrorHandler retries this record
+            // before giving up — a transient DB blip must not permanently skip the
+            // offset and leave a snapshot stale forever.
+            throw new RuntimeException("report materialization failed", e);
         }
     }
 

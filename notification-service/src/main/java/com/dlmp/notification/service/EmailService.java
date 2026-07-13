@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 /**
@@ -31,6 +32,9 @@ public class EmailService {
     private boolean mailEnabled;
 
     // ─── Core sender — NEVER throws, failures are logged only ─────────────────
+    // @Async lives on the public sendXxxEmail entry points below (not here):
+    // Spring's async proxy only intercepts external calls, and those methods
+    // call this one from within the same bean (self-invocation bypasses the proxy).
 
     public void sendHtml(String to, String subject, String htmlBody) {
         if (!mailEnabled) {
@@ -59,11 +63,16 @@ public class EmailService {
     }
 
     // ─── Convenience methods called by DlmpEventConsumer ──────────────────────
+    // @Async here (not on sendHtml): these are the methods external callers
+    // invoke through the Spring proxy, so this is where the async boundary
+    // actually takes effect.
 
+    @Async("emailExecutor")
     public void sendWelcomeEmail(String email, String firstName) {
         sendHtml(email, "Welcome to DLMP! 🎉", welcomeTemplate(firstName));
     }
 
+    @Async("emailExecutor")
     public void sendLoanApplicationEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
         sendHtml(event.getUserEmail(),
@@ -72,6 +81,7 @@ public class EmailService {
                 str(event.getPrincipalAmount()), str(event.getEmiAmount())));
     }
 
+    @Async("emailExecutor")
     public void sendLoanApprovedEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
         sendHtml(event.getUserEmail(),
@@ -80,6 +90,7 @@ public class EmailService {
                 event.getLoanNumber(), str(event.getPrincipalAmount())));
     }
 
+    @Async("emailExecutor")
     public void sendLoanRejectedEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
         sendHtml(event.getUserEmail(),
@@ -88,6 +99,7 @@ public class EmailService {
                 event.getRejectionReason() != null ? event.getRejectionReason() : "Please contact support"));
     }
 
+    @Async("emailExecutor")
     public void sendLoanDisbursedEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
         sendHtml(event.getUserEmail(),
@@ -96,6 +108,7 @@ public class EmailService {
                 event.getLoanNumber(), str(event.getPrincipalAmount()), "As per your repayment schedule"));
     }
 
+    @Async("emailExecutor")
     public void sendPaymentConfirmationEmail(com.dlmp.common.event.PaymentEvent event) {
         if (event.getUserEmail() == null) return;
         sendHtml(event.getUserEmail(),

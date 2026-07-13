@@ -48,6 +48,12 @@ spring:
       acks: all
       properties:
         enable.idempotence: true
+        # Fail fast instead of blocking the single-threaded outbox relay scheduler
+        # (and the Hikari connection its @Transactional holds) for the 60s Kafka
+        # client default when broker/metadata is unreachable during a cold start.
+        max.block.ms: 8000
+        request.timeout.ms: 10000
+        delivery.timeout.ms: 15000
     properties:
       security.protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
       sasl.mechanism: ${KAFKA_SASL_MECHANISM:PLAIN}

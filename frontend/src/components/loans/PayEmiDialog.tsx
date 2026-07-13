@@ -10,6 +10,28 @@ import { apiErrorMessage } from "@/api/client";
 import { paymentSchema, type PaymentFormInput, type PaymentFormValues } from "@/lib/schemas";
 import type { EmiScheduleResponse } from "@/types/domain";
 
+/**
+ * Splits a payment amount into penalty/interest/principal using the same
+ * penalty -> interest -> principal waterfall as loan-service's
+ * LoanRepaymentService, so payment-service's ledger records an accurate
+ * split instead of defaulting the whole amount to "principal".
+ */
+function splitPaymentComponents(installment: EmiScheduleResponse, amount: number) {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const bucket = (paid: number) => {
+    const afterPenalty = Math.max(paid - installment.penaltyAmount, 0);
+    return {
+      penaltyPaid: Math.min(paid, installment.penaltyAmount),
+      interestPaid: Math.min(afterPenalty, installment.interestComponent),
+    };
+  };
+  const before = bucket(installment.paidAmount);
+  const after = bucket(installment.paidAmount + amount);
+  const penaltyAmount = round2(after.penaltyPaid - before.penaltyPaid);
+  const interestAmount = round2(after.interestPaid - before.interestPaid);
+  return { penaltyAmount, interestAmount, principalAmount: round2(amount - penaltyAmount - interestAmount) };
+}
+
 export function PayEmiDialog({
   open,
   onClose,
@@ -45,8 +67,9 @@ export function PayEmiDialog({
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${loanId}-${Date.now()}`;
+      const split = nextInstallment ? splitPaymentComponents(nextInstallment, values.amount) : undefined;
       const payment = await paymentsApi.initiate(
-        { ...values, loanId, remarks: values.remarks || undefined },
+        { ...values, ...split, loanId, remarks: values.remarks || undefined },
         idempotencyKey,
       );
       toast.success(`Payment received — ${payment.paymentReference}`);

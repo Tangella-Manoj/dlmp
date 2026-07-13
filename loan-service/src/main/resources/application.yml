@@ -24,6 +24,14 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+    properties:
+      hibernate:
+        # A single home-loan disbursement (up to 300 months tenure) inserts one
+        # EmiSchedule row per installment; without batching that's ~300
+        # sequential single-row INSERTs inside the disbursement transaction.
+        jdbc:
+          batch_size: 50
+        order_inserts: true
 
   flyway:
     enabled: true
@@ -55,6 +63,12 @@ spring:
       properties:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 5
+        # Fail fast instead of blocking the single-threaded outbox relay scheduler
+        # (and the Hikari connection its @Transactional holds) for the 60s Kafka
+        # client default when broker/metadata is unreachable during a cold start.
+        max.block.ms: 8000
+        request.timeout.ms: 10000
+        delivery.timeout.ms: 15000
     consumer:
       group-id: loan-service-group
       auto-offset-reset: earliest
@@ -75,6 +89,15 @@ spring:
     openfeign:
       circuitbreaker:
         enabled: false   # breaker lives on UserActivationChecker via Resilience4j annotation
+      client:
+        config:
+          user-service:
+            # Feign's own defaults (10s connect / 60s read) mean each of the 5
+            # calls the breaker needs before it can open could individually take
+            # up to 60s on a Render cold start. Fail faster so the breaker opens
+            # sooner instead of stacking multiple 60s waits.
+            connect-timeout: 5000
+            read-timeout: 15000
 
 dlmp:
   jwt:
@@ -108,11 +131,10 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 3
         failure-rate-threshold: 50
         wait-duration-in-open-state: 15s
-  retry:
-    instances:
-      user-service:
-        max-attempts: 3
-        wait-duration: 1s
+  # No resilience4j.retry block: isUserActive is called from within the
+  # disbursement saga's fail-closed path, and no @Retry annotation is applied
+  # anywhere in the codebase — a retry.instances block here previously gave a
+  # false impression that calls were retried when they were not.
 
 springdoc:
   swagger-ui:
