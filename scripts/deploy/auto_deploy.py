@@ -259,8 +259,9 @@ class Aiven:
 
         user = next((u for u in svc.get("users", []) if u.get("username") == "avnadmin"),
                     (svc.get("users") or [None])[0])
-        if not user or not user.get("password"):
+        if not user:
             die("Could not extract Kafka SASL credentials from Aiven.")
+        username = user["username"]
 
         # topics
         _, body = http("GET", f"{self.BASE}/project/{self.project}/service/{name}/topic", token=self.auth)
@@ -287,8 +288,12 @@ class Aiven:
         if not cert:
             die("Could not fetch Aiven CA certificate.")
 
+        # Use the already-resolved `password` (with its os.environ fallback for
+        # Aiven's masked "<redacted>" API response) — not user["password"], which
+        # is the same masked value straight from the API and would silently
+        # discard the fallback, shipping a broken "<redacted>" credential.
         creds = {"servers": f"{comp['host']}:{comp['port']}",
-                 "user": user["username"], "password": user["password"], "ca": cert}
+                 "user": username, "password": password, "ca": cert}
         print(f"{OK} Aiven Kafka: {creds['servers']} (SASL), topics ready")
         return creds
 
