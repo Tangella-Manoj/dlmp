@@ -14,6 +14,7 @@ import argparse
 import json
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -39,8 +40,33 @@ def load_secrets() -> dict:
     return cfg
 
 
+def ad_http_get_project(token: str, project_id: str):
+    req = urllib.request.Request(
+        f"https://api.vercel.com/v9/projects/{project_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except Exception as e:
+        return 0, {"error": str(e)}
+
+
 def run(cmd, **kwargs):
-    print(f"{INFO} {' '.join(str(c) for c in cmd if not str(c).startswith('VERCEL'))}")
+    # Redact the token value itself (it follows a "--token" arg), not just args
+    # literally named VERCEL* — the previous version leaked the raw token to
+    # stdout/logs.
+    printable = []
+    redact_next = False
+    for c in cmd:
+        if redact_next:
+            printable.append("***")
+            redact_next = False
+        else:
+            printable.append(str(c))
+        if str(c) == "--token":
+            redact_next = True
+    print(f"{INFO} {' '.join(printable)}")
     return subprocess.run(cmd, cwd=FRONTEND, text=True, **kwargs)
 
 
@@ -105,14 +131,35 @@ Then:   python3 scripts/deploy/deploy_frontend.py
     r = run(["npx", "--yes", "vercel", "--prod", "--yes", "--token", token], capture_output=True)
     if r.returncode != 0:
         die(f"Deployment failed: {r.stderr or r.stdout}")
-    url = r.stdout.strip().splitlines()[-1]
+    # The deployment URL is the last https:// line Vercel prints (other lines
+    # are build/env-check chatter) — searching beats assuming it's the last
+    # line of output outright, which broke when that line wasn't the URL.
+    url = next(
+        (line.strip() for line in reversed(r.stdout.splitlines()) if line.strip().startswith("https://")),
+        None,
+    )
+    if not url:
+        die(f"Could not find deployment URL in Vercel output:\n{r.stdout}")
     print(f"{OK} Deployed: {url}")
 
-    # Read back the linked project name so we can report the stable production URL too.
+    # Read back the linked project and warn if Vercel's default "Authentication"
+    # (SSO) wall is on — it 302s every visitor to a Vercel login page instead
+    # of serving the app, and is enabled by default for team-owned projects.
     project_json = FRONTEND / ".vercel" / "project.json"
+    project_id = None
     if project_json.exists():
         proj = json.loads(project_json.read_text())
-        print(f"{INFO} Vercel project: {proj.get('projectId', '?')}")
+        project_id = proj.get("projectId")
+        print(f"{INFO} Vercel project: {project_id}")
+
+    if project_id:
+        code, body = ad_http_get_project(token, project_id)
+        if code == 200 and body.get("ssoProtection"):
+            print(f"\n{WARN} Vercel Authentication is ON for this project — the URL above "
+                  f"redirects every visitor to a Vercel login page instead of the app.")
+            print(f"   Disable it yourself (Project → Settings → Deployment Protection → "
+                  f"Vercel Authentication → Off), or ask your assistant to do it — that's a "
+                  f"security-relevant change it should confirm with you first.")
 
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"  {OK} FRONTEND DEPLOYED")
