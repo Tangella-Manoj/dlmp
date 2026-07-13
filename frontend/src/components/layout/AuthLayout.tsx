@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { ShieldCheck, TrendingUp, Zap } from "lucide-react";
 
 const features = [
-  { icon: Zap, title: "Instant credit decisions", desc: "CIBIL-style scoring evaluates every application in real time." },
-  { icon: ShieldCheck, title: "Bank-grade security", desc: "JWT auth, role-based access, and idempotent payments by design." },
-  { icon: TrendingUp, title: "Live portfolio insight", desc: "Event-driven reporting keeps disbursement and recovery numbers current." },
+  { icon: Zap, title: "Instant decisions", desc: "Get your credit decision in seconds, not days." },
+  { icon: ShieldCheck, title: "Secure by default", desc: "Your data and payments are protected at every step." },
+  { icon: TrendingUp, title: "Track everything", desc: "See your EMIs, balances, and repayment history in one place." },
 ];
 
 export function AuthLayout({ children, title, subtitle }: { children: ReactNode; title: string; subtitle: string }) {
@@ -28,13 +28,12 @@ export function AuthLayout({ children, title, subtitle }: { children: ReactNode;
         <div className="relative space-y-10">
           <div>
             <h1 className="font-display text-4xl font-bold leading-tight">
-              Distributed Loan
+              Loans made
               <br />
-              Management Platform
+              simple.
             </h1>
             <p className="mt-4 max-w-md text-ink-300">
-              A microservices-based lending system with SAGA orchestration, CQRS reporting, and a
-              transactional outbox — built for correctness under failure.
+              Apply in minutes, get an instant decision, and manage every EMI from one dashboard.
             </p>
           </div>
           <div className="space-y-5">
