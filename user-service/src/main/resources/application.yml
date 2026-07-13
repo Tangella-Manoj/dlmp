@@ -32,7 +32,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: false
+    baseline-on-migrate: true
+    baseline-version: "0"
     table: flyway_schema_history_users   # unique table per service in shared DB
 
   data:
