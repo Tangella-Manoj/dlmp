@@ -2,6 +2,7 @@ package com.dlmp.notification.service;
 
 import com.dlmp.notification.domain.entity.Notification;
 import com.dlmp.notification.repository.NotificationRepository;
+import com.dlmp.notification.sse.SseEmitterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -18,14 +19,16 @@ import java.time.LocalDateTime;
 public class NotificationPersistenceService {
 
     private final NotificationRepository repository;
+    private final SseEmitterRegistry sseRegistry;
 
     @Transactional
     public void save(String userId, String title, String message, String type) {
         if (userId == null || userId.isBlank()) return;
         Notification n = Notification.builder()
                 .userId(userId).title(title).message(message).notificationType(type).build();
-        repository.save(n);
+        n = repository.save(n);
         log.debug("Notification saved: userId={}, title={}", userId, title);
+        sseRegistry.push(userId, n);
     }
 
     @Transactional(readOnly = true)

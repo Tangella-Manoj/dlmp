@@ -74,15 +74,24 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange.mutate().request(sanitized.build()).build());
         }
 
-        // Validate JWT
+        // Validate JWT. The browser's native EventSource client (used for SSE
+        // streaming endpoints) cannot set custom headers, so streaming paths
+        // additionally accept the token via an "access_token" query param.
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        String token;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } else if (path.endsWith("/stream")) {
+            token = exchange.getRequest().getQueryParams().getFirst("access_token");
+        } else {
+            token = null;
+        }
+        if (token == null || token.isBlank()) {
             log.debug("[GATEWAY] Missing/invalid auth header for {}", path);
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
 
-        String token = authHeader.substring(7);
         if (!jwtUtil.isValid(token) || !jwtUtil.isAccessToken(token)) {
             log.warn("[GATEWAY] Invalid/expired token for path={}", path);
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
@@ -99,6 +108,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                 .header("X-User-Email", email != null ? email : "")
                 .header("X-User-Roles", String.join(",", roles))
                 .header("X-Gateway-Request", "true")
+                // Downstream services validate the JWT themselves too (defense in
+                // depth) — ensure they see a normal Authorization header even when
+                // this request authenticated via the query-param fallback above.
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .build();
 
         log.debug("[GATEWAY] ✓ auth: userId={} path={} traceId={}", userId, path, traceId);

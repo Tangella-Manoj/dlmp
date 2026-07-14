@@ -23,7 +23,9 @@ export function NotificationsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["notifications", "my", page],
     queryFn: () => notificationsApi.my(page, 20),
-    refetchInterval: 10_000,
+    // useNotificationStream pushes new notifications instantly over SSE —
+    // this is only a slow safety net for the rare gap after a reconnect.
+    refetchInterval: 60_000,
   });
 
   const markRead = useMutation({

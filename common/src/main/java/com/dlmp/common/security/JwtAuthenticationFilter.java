@@ -30,6 +30,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
 
+    /**
+     * OncePerRequestFilter skips ASYNC dispatches by default. Long-lived SSE
+     * responses (SseEmitter) complete/time out via exactly such an async
+     * dispatch, which re-enters the whole filter chain including
+     * AuthorizationFilter — if this filter doesn't also run then, the security
+     * context is empty on that dispatch and the framework's own async
+     * completion is rejected with AccessDeniedException.
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {

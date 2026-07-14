@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LOAN_TYPES } from "@/types/domain";
+import { LOAN_TYPE_BOUNDS } from "@/lib/loanMeta";
 
 export const loginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email"),
@@ -35,15 +36,39 @@ export const registerSchema = z.object({
 export type RegisterFormInput = z.input<typeof registerSchema>;
 export type RegisterFormValues = z.output<typeof registerSchema>;
 
-// Mirrors loan-service LoanApplicationRequest validation.
-export const loanApplicationSchema = z.object({
-  loanType: z.enum(LOAN_TYPES),
-  principalAmount: z.coerce.number().min(1000, "Minimum amount is ₹1,000"),
-  tenureMonths: z.coerce.number().int().min(1).max(360),
-  purpose: z.string().max(500).optional().or(z.literal("")),
-  monthlyIncome: z.coerce.number().min(1, "Monthly income is required"),
-  existingDebts: z.coerce.number().min(0).optional(),
-});
+// Mirrors loan-service LoanApplicationRequest validation, including the
+// per-loan-type amount/tenure bounds LoanCommandService enforces server-side
+// (LOAN_TYPE_BOUNDS) — catching an out-of-range value here instead of
+// round-tripping to the backend for the same rejection.
+export const loanApplicationSchema = z
+  .object({
+    loanType: z.enum(LOAN_TYPES),
+    principalAmount: z.coerce
+      .number()
+      .min(1000, "Minimum amount is ₹1,000")
+      .max(100_000_000, "Amount is too large"),
+    tenureMonths: z.coerce.number().int().min(1).max(360),
+    purpose: z.string().max(500).optional().or(z.literal("")),
+    monthlyIncome: z.coerce.number().min(1, "Monthly income is required"),
+    existingDebts: z.coerce.number().min(0).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const bounds = LOAN_TYPE_BOUNDS[data.loanType];
+    if (data.principalAmount < bounds.min || data.principalAmount > bounds.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["principalAmount"],
+        message: `${data.loanType} loans must be ₹${bounds.min.toLocaleString("en-IN")} – ₹${bounds.max.toLocaleString("en-IN")}`,
+      });
+    }
+    if (data.tenureMonths > bounds.maxTenure) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tenureMonths"],
+        message: `Max tenure for ${data.loanType} is ${bounds.maxTenure} months`,
+      });
+    }
+  });
 export type LoanApplicationFormInput = z.input<typeof loanApplicationSchema>;
 export type LoanApplicationFormValues = z.output<typeof loanApplicationSchema>;
 

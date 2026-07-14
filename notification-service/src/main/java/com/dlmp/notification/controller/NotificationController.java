@@ -4,14 +4,17 @@ import com.dlmp.common.dto.ApiResponse;
 import com.dlmp.common.security.JwtUserPrincipal;
 import com.dlmp.notification.domain.entity.Notification;
 import com.dlmp.notification.service.NotificationPersistenceService;
+import com.dlmp.notification.sse.SseEmitterRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 
@@ -26,6 +29,13 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationPersistenceService notificationService;
+    private final SseEmitterRegistry sseRegistry;
+
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Live notification stream (Server-Sent Events)")
+    public SseEmitter stream(@AuthenticationPrincipal JwtUserPrincipal principal) {
+        return sseRegistry.register(principal.userId());
+    }
 
     @GetMapping("/my")
     @Operation(summary = "Get current user's notifications (newest first)")

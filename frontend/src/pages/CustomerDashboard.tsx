@@ -15,6 +15,10 @@ export function CustomerDashboard() {
   const { data: page, isLoading } = useQuery({
     queryKey: ["loans", "my"],
     queryFn: () => loansApi.my(0, 50),
+    // Live push (useNotificationStream) invalidates this instantly on a
+    // relevant event; this is only a slow safety net for the rare gap
+    // right after a reconnect.
+    refetchInterval: 60_000,
   });
 
   const loans = page?.content ?? [];

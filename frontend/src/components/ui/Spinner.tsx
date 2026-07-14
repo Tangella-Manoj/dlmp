@@ -2,7 +2,12 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cn("size-5 animate-spin text-brand-600", className)} />;
+  return (
+    <span role="status" aria-live="polite">
+      <Loader2 className={cn("size-5 animate-spin text-brand-600", className)} />
+      <span className="sr-only">Loading…</span>
+    </span>
+  );
 }
 
 export function PageSpinner() {

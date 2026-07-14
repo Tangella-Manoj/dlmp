@@ -38,25 +38,28 @@ export function LoanDetailPage() {
   // before that's landed, showing no visible change. Polling while the loan
   // is ACTIVE (the only state where this async update can happen) closes
   // that gap without requiring a manual refresh.
+  // Push (useNotificationStream) invalidates these instantly when a relevant
+  // event lands for this loan's owner — polling now only needs to be a slow
+  // safety net for the rare gap right after a reconnect.
   const loanQuery = useQuery({
     queryKey: ["loans", loanId],
     queryFn: () => loansApi.getById(loanId!),
     enabled: !!loanId,
-    refetchInterval: (query) => (query.state.data?.status === "ACTIVE" ? 4000 : false),
+    refetchInterval: (query) => (query.state.data?.status === "ACTIVE" ? 20_000 : false),
   });
 
   const scheduleQuery = useQuery({
     queryKey: ["loans", loanId, "schedule"],
     queryFn: () => loansApi.emiSchedule(loanId!),
     enabled: !!loanId && loanQuery.data?.status !== "PENDING_REVIEW" && loanQuery.data?.status !== "REJECTED",
-    refetchInterval: loanQuery.data?.status === "ACTIVE" ? 4000 : false,
+    refetchInterval: loanQuery.data?.status === "ACTIVE" ? 20_000 : false,
   });
 
   const paymentsQuery = useQuery({
     queryKey: ["payments", "loan", loanId],
     queryFn: () => paymentsApi.byLoan(loanId!, 0, 10),
     enabled: !!loanId,
-    refetchInterval: loanQuery.data?.status === "ACTIVE" ? 6000 : false,
+    refetchInterval: loanQuery.data?.status === "ACTIVE" ? 20_000 : false,
   });
 
   function invalidateAll() {
