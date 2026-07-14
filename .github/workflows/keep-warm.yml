@@ -2,12 +2,17 @@ name: DLMP — Keep Render services warm
 
 # Render's free tier spins a service down after ~15 min of no traffic; the
 # next request then pays a full JVM cold start (measured up to 220s for
-# user-service). Pinging every 10 minutes keeps all six services warm for
-# anyone actively using/demoing the app, so requests hit the ~0.5s warm
-# baseline instead of a multi-minute cold start.
+# user-service). Pinging every 5 minutes (GitHub's minimum cron granularity)
+# keeps all six services warm for anyone actively using/demoing the app, so
+# requests hit the ~0.5s warm baseline instead of a multi-minute cold start.
+#
+# Note: GitHub's own cron scheduler is best-effort, not exact — it can delay
+# or occasionally skip a scheduled run under platform load, so an idle gap
+# is still possible even at this interval. workflow_dispatch below lets you
+# force an immediate warm-up on demand instead of waiting for the next tick.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
