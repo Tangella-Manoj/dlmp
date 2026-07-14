@@ -60,9 +60,9 @@ public class DlmpEventConsumer {
         try {
             UserEvent event = objectMapper.readValue(payload, UserEvent.class);
             if ("USER_REGISTERED".equals(event.getEventType())) {
-                persistenceService.save(event.getUserId(), "Welcome to DLMP! 🎉",
+                boolean isNew = persistenceService.save(event.getEventId(), event.getUserId(), "Welcome to DLMP! 🎉",
                         "Your account has been created. You can now apply for loans and track repayments.", "SYSTEM");
-                emailService.sendWelcomeEmail(event.getEmail(), event.getFirstName());
+                if (isNew) emailService.sendWelcomeEmail(event.getEmail(), event.getFirstName());
             }
         } catch (Exception e) {
             log.error("[KAFKA] Failed user event: {}", e.getMessage());
@@ -76,27 +76,27 @@ public class DlmpEventConsumer {
     private void handleLoan(LoanEvent e) {
         switch (e.getEventType()) {
             case "LOAN_APPLICATION_SUBMITTED" -> {
-                persistenceService.save(e.getUserId(), "Application Received — " + e.getLoanNumber(),
+                boolean isNew = persistenceService.save(e.getEventId(), e.getUserId(), "Application Received — " + e.getLoanNumber(),
                         "Your loan application has been received and is under review.", "LOAN");
-                emailService.sendLoanApplicationEmail(e);
+                if (isNew) emailService.sendLoanApplicationEmail(e);
             }
             case "LOAN_APPROVED" -> {
-                persistenceService.save(e.getUserId(), "🎉 Loan Approved — " + e.getLoanNumber(),
+                boolean isNew = persistenceService.save(e.getEventId(), e.getUserId(), "🎉 Loan Approved — " + e.getLoanNumber(),
                         "Your loan has been approved!", "LOAN");
-                emailService.sendLoanApprovedEmail(e);
+                if (isNew) emailService.sendLoanApprovedEmail(e);
             }
             case "LOAN_REJECTED" -> {
-                persistenceService.save(e.getUserId(), "Application Update — " + e.getLoanNumber(),
+                boolean isNew = persistenceService.save(e.getEventId(), e.getUserId(), "Application Update — " + e.getLoanNumber(),
                         "Your loan application could not be approved. Reason: " + e.getRejectionReason(), "LOAN");
-                emailService.sendLoanRejectedEmail(e);
+                if (isNew) emailService.sendLoanRejectedEmail(e);
             }
             case "LOAN_DISBURSED" -> {
-                persistenceService.save(e.getUserId(), "💰 Loan Disbursed — " + e.getLoanNumber(),
+                boolean isNew = persistenceService.save(e.getEventId(), e.getUserId(), "💰 Loan Disbursed — " + e.getLoanNumber(),
                         "Your loan of ₹" + e.getPrincipalAmount() + " has been disbursed.", "LOAN");
-                emailService.sendLoanDisbursedEmail(e);
+                if (isNew) emailService.sendLoanDisbursedEmail(e);
             }
             case "LOAN_CLOSED" ->
-                persistenceService.save(e.getUserId(), "🎉 Loan Closed — " + e.getLoanNumber(),
+                persistenceService.save(e.getEventId(), e.getUserId(), "🎉 Loan Closed — " + e.getLoanNumber(),
                         "Congratulations! Your loan is fully repaid and closed.", "LOAN");
             default -> log.debug("[NOTIF] Ignoring: {}", e.getEventType());
         }
@@ -105,12 +105,12 @@ public class DlmpEventConsumer {
     private void handlePayment(PaymentEvent e) {
         switch (e.getEventType()) {
             case "PAYMENT_COMPLETED" -> {
-                persistenceService.save(e.getUserId(), "✅ Payment Received — " + e.getPaymentReference(),
+                boolean isNew = persistenceService.save(e.getEventId(), e.getUserId(), "✅ Payment Received — " + e.getPaymentReference(),
                         "Payment of ₹" + e.getAmount() + " received.", "PAYMENT");
-                emailService.sendPaymentConfirmationEmail(e);
+                if (isNew) emailService.sendPaymentConfirmationEmail(e);
             }
             case "PAYMENT_FAILED" ->
-                persistenceService.save(e.getUserId(), "⚠️ Payment Failed",
+                persistenceService.save(e.getEventId(), e.getUserId(), "⚠️ Payment Failed",
                         "Your payment could not be processed. Please retry.", "PAYMENT");
             default -> log.debug("[NOTIF] Ignoring: {}", e.getEventType());
         }

@@ -1,7 +1,9 @@
 package com.dlmp.notification.service;
 
 import com.dlmp.notification.domain.entity.Notification;
+import com.dlmp.notification.domain.entity.ProcessedEvent;
 import com.dlmp.notification.repository.NotificationRepository;
+import com.dlmp.notification.repository.ProcessedEventRepository;
 import com.dlmp.notification.sse.SseEmitterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,16 +21,33 @@ import java.time.LocalDateTime;
 public class NotificationPersistenceService {
 
     private final NotificationRepository repository;
+    private final ProcessedEventRepository processedEventRepository;
     private final SseEmitterRegistry sseRegistry;
 
+    /**
+     * Idempotent per Kafka eventId: RECORD ack-mode commits the consumer offset
+     * only after this method returns, so a crash between a successful save and
+     * that commit redelivers the same message. The existence check and the
+     * ProcessedEvent insert happen in the same transaction as the notification
+     * row, so a redelivered event is a clean no-op instead of a duplicate.
+     */
+    /** @return true if a notification was actually persisted (false if this event was a duplicate delivery). */
     @Transactional
-    public void save(String userId, String title, String message, String type) {
-        if (userId == null || userId.isBlank()) return;
+    public boolean save(String eventId, String userId, String title, String message, String type) {
+        if (userId == null || userId.isBlank()) return false;
+        if (eventId != null && processedEventRepository.existsById(eventId)) {
+            log.debug("Event {} already processed — skipping duplicate notification", eventId);
+            return false;
+        }
+        if (eventId != null) {
+            processedEventRepository.save(new ProcessedEvent(eventId));
+        }
         Notification n = Notification.builder()
                 .userId(userId).title(title).message(message).notificationType(type).build();
         n = repository.save(n);
         log.debug("Notification saved: userId={}, title={}", userId, title);
         sseRegistry.push(userId, n);
+        return true;
     }
 
     @Transactional(readOnly = true)
