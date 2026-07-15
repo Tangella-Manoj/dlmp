@@ -97,6 +97,13 @@ export function VerifyIncomePage() {
                 value={String(latest.bounceCount ?? 0)}
                 tone={latest.bounceCount ? "warn" : undefined}
               />
+              {latest.reconciliationConfidence !== undefined && (
+                <Stat
+                  label="Statement verification"
+                  value={`${Math.round(latest.reconciliationConfidence * 100)}% confirmed`}
+                  tone={latest.reconciliationConfidence < 0.9 ? "warn" : undefined}
+                />
+              )}
             </div>
 
             <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 p-5 text-white">

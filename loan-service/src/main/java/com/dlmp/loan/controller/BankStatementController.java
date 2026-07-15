@@ -58,7 +58,8 @@ public class BankStatementController {
                 .monthsCovered(a.getMonthsCovered()).transactionCount(a.getTransactionCount())
                 .verifiedMonthlyIncome(a.getVerifiedMonthlyIncome()).avgMonthlyBalance(a.getAvgMonthlyBalance())
                 .avgMonthlyOutflow(a.getAvgMonthlyOutflow()).bounceCount(a.getBounceCount())
-                .verifiedEligibleAmount(a.getVerifiedEligibleAmount()).createdAt(a.getCreatedAt())
+                .verifiedEligibleAmount(a.getVerifiedEligibleAmount())
+                .reconciliationConfidence(a.getReconciliationConfidence()).createdAt(a.getCreatedAt())
                 .build();
     }
 }

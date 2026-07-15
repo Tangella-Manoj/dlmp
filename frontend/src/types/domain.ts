@@ -122,6 +122,7 @@ export interface BankStatementAnalysis {
   avgMonthlyOutflow?: number;
   bounceCount?: number;
   verifiedEligibleAmount?: number;
+  reconciliationConfidence?: number;
   createdAt: string;
 }
 

@@ -13,6 +13,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.util.List;
 
@@ -50,6 +52,23 @@ public class GlobalExceptionHandler {
         log.warn("Data integrity violation at {}: {}", req.getRequestURI(), ex.getMostSpecificCause().getMessage());
         return ResponseEntity.status(400)
                 .body(ApiResponse.error(400, "Invalid or out-of-range request data", "INVALID_DATA"));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest req) {
+        // Spring rejects an oversized multipart body during request parsing, before
+        // the controller (and its own 10MB check) ever runs — without this handler
+        // it falls through to the generic 500 below instead of a clean client error.
+        log.warn("Upload too large at {}: {}", req.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(413)
+                .body(ApiResponse.error(413, "File too large — max 10MB", "FILE_TOO_LARGE"));
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMultipartError(MultipartException ex, HttpServletRequest req) {
+        log.warn("Multipart parse error at {}: {}", req.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(400)
+                .body(ApiResponse.error(400, "Could not read the uploaded file", "INVALID_UPLOAD"));
     }
 
     @ExceptionHandler(AccessDeniedException.class)

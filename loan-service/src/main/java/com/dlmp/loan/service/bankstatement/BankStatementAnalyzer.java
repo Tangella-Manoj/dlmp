@@ -29,11 +29,27 @@ public class BankStatementAnalyzer {
     private static final BigDecimal CLUSTER_TOLERANCE = new BigDecimal("0.10");
     private static final BigDecimal MIN_SALARY_CANDIDATE = new BigDecimal("1000");
 
+    // A parsed row's balance must land within this much of what the previous
+    // row's balance + its own debit/credit implies, to count as "reconciled."
+    // A little slack for rounding/paise-level rows some exports omit.
+    private static final BigDecimal RECONCILE_TOLERANCE = new BigDecimal("1.00");
+
     public record Result(
             LocalDate periodStart, LocalDate periodEnd, int monthsCovered, int transactionCount,
             BigDecimal verifiedMonthlyIncome, BigDecimal avgMonthlyBalance,
-            BigDecimal avgMonthlyOutflow, int bounceCount
-    ) {}
+            BigDecimal avgMonthlyOutflow, int bounceCount,
+            int reconcilablePairs, int reconciledPairs
+    ) {
+        /**
+         * Fraction of consecutive balance-bearing rows whose own arithmetic
+         * checks out (balance[i] == balance[i-1] - debit[i] + credit[i]).
+         * Empty (no balance column to check against) reports full confidence
+         * rather than false suspicion — there's simply nothing to contradict.
+         */
+        public double reconciliationConfidence() {
+            return reconcilablePairs == 0 ? 1.0 : (double) reconciledPairs / reconcilablePairs;
+        }
+    }
 
     public Result analyze(List<ParsedTransaction> transactions) {
         if (transactions.isEmpty()) {
@@ -61,12 +77,41 @@ public class BankStatementAnalyzer {
                 .count();
 
         BigDecimal verifiedMonthlyIncome = detectMonthlyIncome(sorted, monthsCovered);
+        int[] reconciliation = reconcileBalances(sorted);
 
-        log.info("[BANK-STATEMENT] Analyzed {} txns over {} months: income={} avgBalance={} outflow={} bounces={}",
-                sorted.size(), monthsCovered, verifiedMonthlyIncome, avgMonthlyBalance, avgMonthlyOutflow, bounceCount);
+        log.info("[BANK-STATEMENT] Analyzed {} txns over {} months: income={} avgBalance={} outflow={} bounces={} reconciled={}/{}",
+                sorted.size(), monthsCovered, verifiedMonthlyIncome, avgMonthlyBalance, avgMonthlyOutflow, bounceCount,
+                reconciliation[1], reconciliation[0]);
 
         return new Result(periodStart, periodEnd, monthsCovered, sorted.size(),
-                verifiedMonthlyIncome, avgMonthlyBalance, avgMonthlyOutflow, bounceCount);
+                verifiedMonthlyIncome, avgMonthlyBalance, avgMonthlyOutflow, bounceCount,
+                reconciliation[0], reconciliation[1]);
+    }
+
+    /**
+     * Cross-checks each consecutive pair of balance-bearing rows against the
+     * statement's own arithmetic: this is the actual defense against a
+     * misparsed PDF silently feeding a wrong number into a credit decision —
+     * a genuinely bad parse (columns swapped, a row split wrong) will fail
+     * its own numbers reconciling with each other, whether or not any single
+     * value "looks" plausible in isolation.
+     *
+     * @return {checkablePairs, reconciledPairs}
+     */
+    private int[] reconcileBalances(List<ParsedTransaction> sorted) {
+        int checkable = 0, reconciled = 0;
+        ParsedTransaction prev = null;
+        for (ParsedTransaction t : sorted) {
+            if (prev != null && prev.balance() != null && t.balance() != null) {
+                BigDecimal expected = prev.balance().subtract(t.debit()).add(t.credit());
+                checkable++;
+                if (expected.subtract(t.balance()).abs().compareTo(RECONCILE_TOLERANCE) <= 0) {
+                    reconciled++;
+                }
+            }
+            prev = t;
+        }
+        return new int[]{checkable, reconciled};
     }
 
     /**

@@ -80,6 +80,53 @@ class BankStatementAnalyzerTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void reconciliationConfidenceIsFullWhenBalancesAgreeWithArithmetic() {
+        List<ParsedTransaction> txns = List.of(
+                tx("01/01/2026", "OPEN", null, "10000.00", "10000.00"),
+                tx("05/01/2026", "SPEND", "2000.00", null, "8000.00"),
+                tx("10/01/2026", "CREDIT", null, "5000.00", "13000.00")
+        );
+
+        BankStatementAnalyzer.Result result = analyzer.analyze(txns);
+
+        assertThat(result.reconcilablePairs()).isEqualTo(2);
+        assertThat(result.reconciledPairs()).isEqualTo(2);
+        assertThat(result.reconciliationConfidence()).isEqualTo(1.0);
+    }
+
+    @Test
+    void reconciliationConfidenceDropsWhenBalancesDontAddUp() {
+        // A misparsed row: the balance jumps in a way the debit/credit for
+        // that row cannot explain (as if a column got swapped).
+        List<ParsedTransaction> txns = List.of(
+                tx("01/01/2026", "OPEN", null, "10000.00", "10000.00"),
+                tx("05/01/2026", "GARBLED ROW", "2000.00", null, "50000.00"),
+                tx("10/01/2026", "CREDIT", null, "5000.00", "55000.00")
+        );
+
+        BankStatementAnalyzer.Result result = analyzer.analyze(txns);
+
+        assertThat(result.reconcilablePairs()).isEqualTo(2);
+        assertThat(result.reconciledPairs()).isEqualTo(1);
+        assertThat(result.reconciliationConfidence()).isEqualTo(0.5);
+    }
+
+    @Test
+    void reconciliationConfidenceIsFullConfidenceWhenNoBalanceDataToCheck() {
+        // No balance column at all (e.g. a CSV export without a running balance) —
+        // nothing to contradict the parse, so it isn't penalized for that absence.
+        List<ParsedTransaction> txns = List.of(
+                tx("01/01/2026", "SALARY", null, "50000.00", null),
+                tx("05/01/2026", "RENT", "15000.00", null, null)
+        );
+
+        BankStatementAnalyzer.Result result = analyzer.analyze(txns);
+
+        assertThat(result.reconcilablePairs()).isZero();
+        assertThat(result.reconciliationConfidence()).isEqualTo(1.0);
+    }
+
     private static ParsedTransaction tx(String date, String desc, String debit, String credit, String balance) {
         return new ParsedTransaction(
                 LocalDate.parse(date, java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")),

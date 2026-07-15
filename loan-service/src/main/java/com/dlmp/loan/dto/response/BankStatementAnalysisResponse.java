@@ -30,5 +30,6 @@ public class BankStatementAnalysisResponse {
     private BigDecimal avgMonthlyOutflow;
     private Integer bounceCount;
     private BigDecimal verifiedEligibleAmount;
+    private BigDecimal reconciliationConfidence;
     private LocalDateTime createdAt;
 }

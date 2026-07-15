@@ -74,6 +74,10 @@ public class BankStatementAnalysis {
     @Column(name = "verified_eligible_amount", precision = 15, scale = 2)
     private BigDecimal verifiedEligibleAmount;
 
+    /** Fraction of the statement's own balance arithmetic that verified correctly — see BankStatementAnalyzer. */
+    @Column(name = "reconciliation_confidence", precision = 5, scale = 4)
+    private BigDecimal reconciliationConfidence;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
