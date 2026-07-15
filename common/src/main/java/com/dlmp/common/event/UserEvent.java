@@ -19,6 +19,12 @@ public class UserEvent extends DomainEvent {
     private String lastName;
     private String role;
 
+    // Populated only for eventType="OTP_REQUESTED" — the code itself never
+    // touches the database (Redis-only, short TTL), so it travels solely
+    // through this one-shot event to notification-service for delivery.
+    private String otpCode;
+    private String otpPurpose;
+
     public static UserEvent of(String type, String userId, String email,
                                 String firstName, String traceId) {
         UserEvent e = UserEvent.builder()

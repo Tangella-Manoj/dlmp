@@ -40,35 +40,47 @@ export type RegisterFormValues = z.output<typeof registerSchema>;
 // per-loan-type amount/tenure bounds LoanCommandService enforces server-side
 // (LOAN_TYPE_BOUNDS) — catching an out-of-range value here instead of
 // round-tripping to the backend for the same rejection.
-export const loanApplicationSchema = z
-  .object({
-    loanType: z.enum(LOAN_TYPES),
-    principalAmount: z.coerce
-      .number()
-      .min(1000, "Minimum amount is ₹1,000")
-      .max(100_000_000, "Amount is too large"),
-    tenureMonths: z.coerce.number().int().min(1).max(360),
-    purpose: z.string().max(500).optional().or(z.literal("")),
-    monthlyIncome: z.coerce.number().min(1, "Monthly income is required"),
-    existingDebts: z.coerce.number().min(0).optional(),
-  })
-  .superRefine((data, ctx) => {
-    const bounds = LOAN_TYPE_BOUNDS[data.loanType];
-    if (data.principalAmount < bounds.min || data.principalAmount > bounds.max) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["principalAmount"],
-        message: `${data.loanType} loans must be ₹${bounds.min.toLocaleString("en-IN")} – ₹${bounds.max.toLocaleString("en-IN")}`,
-      });
-    }
-    if (data.tenureMonths > bounds.maxTenure) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["tenureMonths"],
-        message: `Max tenure for ${data.loanType} is ${bounds.maxTenure} months`,
-      });
-    }
-  });
+//
+// `maxOverride` lets the verified-limit flow (see ApplyLoan.tsx) raise the
+// upper bound to a bank-statement-verified eligible amount instead of the
+// loan type's normal cap — the backend is the actual source of truth for
+// whether that override is valid (it re-checks OTP consent + the analysis
+// itself), this only avoids the client rejecting a legitimately higher
+// amount before it ever reaches that check.
+function buildLoanApplicationSchema(maxOverride?: number) {
+  return z
+    .object({
+      loanType: z.enum(LOAN_TYPES),
+      principalAmount: z.coerce
+        .number()
+        .min(1000, "Minimum amount is ₹1,000")
+        .max(100_000_000, "Amount is too large"),
+      tenureMonths: z.coerce.number().int().min(1).max(360),
+      purpose: z.string().max(500).optional().or(z.literal("")),
+      monthlyIncome: z.coerce.number().min(1, "Monthly income is required"),
+      existingDebts: z.coerce.number().min(0).optional(),
+    })
+    .superRefine((data, ctx) => {
+      const bounds = LOAN_TYPE_BOUNDS[data.loanType];
+      const max = maxOverride ? Math.max(bounds.max, maxOverride) : bounds.max;
+      if (data.principalAmount < bounds.min || data.principalAmount > max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["principalAmount"],
+          message: `${data.loanType} loans must be ₹${bounds.min.toLocaleString("en-IN")} – ₹${max.toLocaleString("en-IN")}`,
+        });
+      }
+      if (data.tenureMonths > bounds.maxTenure) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tenureMonths"],
+          message: `Max tenure for ${data.loanType} is ${bounds.maxTenure} months`,
+        });
+      }
+    });
+}
+export const loanApplicationSchema = buildLoanApplicationSchema();
+export { buildLoanApplicationSchema };
 export type LoanApplicationFormInput = z.input<typeof loanApplicationSchema>;
 export type LoanApplicationFormValues = z.output<typeof loanApplicationSchema>;
 

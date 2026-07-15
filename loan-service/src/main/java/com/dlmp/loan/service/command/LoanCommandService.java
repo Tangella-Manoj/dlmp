@@ -1,6 +1,7 @@
 package com.dlmp.loan.service.command;
 
 import com.dlmp.common.event.LoanEvent;
+import com.dlmp.loan.domain.entity.BankStatementAnalysis;
 import com.dlmp.loan.domain.entity.Loan;
 import com.dlmp.loan.domain.enums.LoanStatus;
 import com.dlmp.loan.domain.enums.LoanType;
@@ -8,8 +9,10 @@ import com.dlmp.loan.dto.request.LoanApplicationRequest;
 import com.dlmp.loan.dto.request.LoanDecisionRequest;
 import com.dlmp.loan.exception.LoanNotFoundException;
 import com.dlmp.loan.exception.LoanProcessingException;
+import com.dlmp.loan.repository.BankStatementAnalysisRepository;
 import com.dlmp.loan.repository.LoanRepository;
 import com.dlmp.loan.repository.OutboxEventRepository;
+import com.dlmp.loan.service.consent.LoanConsentGate;
 import com.dlmp.loan.service.outbox.OutboxRelayService;
 import com.dlmp.loan.service.saga.LoanDisbursementSaga;
 import lombok.RequiredArgsConstructor;
@@ -32,27 +35,56 @@ public class LoanCommandService {
     private static final String LOAN_TOPIC = "dlmp.loan.events";
 
     private final LoanRepository loanRepository;
+    private final BankStatementAnalysisRepository bankStatementAnalysisRepository;
     private final OutboxEventRepository outboxRepository;
     private final OutboxRelayService outboxRelay;
     private final EmiCalculatorService emiCalculator;
     private final CreditScoringService creditScoring;
+    private final LoanConsentGate consentGate;
     private final LoanDisbursementSaga disbursementSaga;
 
     @Transactional
     @CacheEvict(value = "portfolio-stats", key = "'all'")
     public Loan applyForLoan(LoanApplicationRequest req, String userId, String userEmail, String traceId) {
+        if (!consentGate.hasConsent(userId, LoanConsentGate.PURPOSE_LOAN_APPLICATION)) {
+            throw new LoanProcessingException(
+                    "Please request and verify the OTP sent to your email before submitting an application");
+        }
+
         LoanType type;
         try { type = LoanType.valueOf(req.getLoanType()); }
         catch (Exception e) { throw new LoanProcessingException("Invalid loan type: " + req.getLoanType()); }
+
+        // A verified bank statement can justify exceeding the loan type's
+        // normal cap — but only with its own separate OTP consent, and only
+        // up to what the statement's own analysis actually supports.
+        BankStatementAnalysis verifiedAnalysis = null;
+        if (Boolean.TRUE.equals(req.getUseVerifiedLimit())) {
+            if (!consentGate.hasConsent(userId, LoanConsentGate.PURPOSE_LIMIT_INCREASE)) {
+                throw new LoanProcessingException(
+                        "Please request and verify the OTP sent to your email to use your verified limit");
+            }
+            verifiedAnalysis = bankStatementAnalysisRepository
+                    .findFirstByUserIdAndStatusOrderByCreatedAtDesc(userId, "COMPLETED")
+                    .orElseThrow(() -> new LoanProcessingException(
+                            "Upload and analyze a bank statement first to use a verified limit"));
+            if (verifiedAnalysis.getVerifiedEligibleAmount() == null
+                    || req.getPrincipalAmount().compareTo(verifiedAnalysis.getVerifiedEligibleAmount()) > 0) {
+                throw new LoanProcessingException("Requested amount exceeds your verified eligible amount of ₹"
+                        + verifiedAnalysis.getVerifiedEligibleAmount());
+            }
+        }
 
         // Validate amount/tenure bounds. BigDecimal.longValue() silently truncates
         // (never throws) for a value that doesn't fit in a long, so an
         // astronomically large amount could otherwise wrap around and slip past
         // this check — compare as BigDecimal instead.
+        BigDecimal typeMax = BigDecimal.valueOf(type.getMaxAmount());
+        BigDecimal effectiveMax = verifiedAnalysis != null ? typeMax.max(verifiedAnalysis.getVerifiedEligibleAmount()) : typeMax;
         if (req.getPrincipalAmount().compareTo(BigDecimal.valueOf(type.getMinAmount())) < 0 ||
-            req.getPrincipalAmount().compareTo(BigDecimal.valueOf(type.getMaxAmount())) > 0) {
-            throw new LoanProcessingException(String.format("Amount for %s must be ₹%,d – ₹%,d",
-                    type, type.getMinAmount(), type.getMaxAmount()));
+            req.getPrincipalAmount().compareTo(effectiveMax) > 0) {
+            throw new LoanProcessingException(String.format("Amount for %s must be ₹%,d – ₹%,.0f",
+                    type, type.getMinAmount(), effectiveMax));
         }
         if (req.getTenureMonths() > type.getMaxTenureMonths()) {
             throw new LoanProcessingException("Max tenure for " + type + " is " + type.getMaxTenureMonths() + " months");
@@ -62,10 +94,14 @@ public class LoanCommandService {
         BigDecimal rate = BigDecimal.valueOf(type.getAnnualRate());
         BigDecimal emi  = emiCalculator.calculateEmi(req.getPrincipalAmount(), rate, req.getTenureMonths());
 
-        // Credit scoring
+        // Credit scoring — verified bank-statement figures replace self-reported
+        // income and add bounce/balance signals when a verified limit is used.
         BigDecimal debts = req.getExistingDebts() != null ? req.getExistingDebts() : BigDecimal.ZERO;
-        CreditScoringService.Assessment assessment = creditScoring.assess(
-                req.getMonthlyIncome(), req.getPrincipalAmount(), req.getTenureMonths(), emi, debts);
+        CreditScoringService.Assessment assessment = verifiedAnalysis != null
+                ? creditScoring.assessWithVerification(req.getMonthlyIncome(), verifiedAnalysis.getVerifiedMonthlyIncome(),
+                        verifiedAnalysis.getAvgMonthlyBalance(), verifiedAnalysis.getBounceCount(),
+                        req.getPrincipalAmount(), req.getTenureMonths(), emi, debts)
+                : creditScoring.assess(req.getMonthlyIncome(), req.getPrincipalAmount(), req.getTenureMonths(), emi, debts);
 
         BigDecimal interest = emiCalculator.calculateTotalInterest(emi, req.getTenureMonths(), req.getPrincipalAmount());
         BigDecimal fee      = emiCalculator.calculateProcessingFee(req.getPrincipalAmount());
@@ -74,6 +110,7 @@ public class LoanCommandService {
                 .loanNumber(generateLoanNumber())
                 .userId(userId)
                 .applicantEmail(userEmail)
+                .bankStatementAnalysisId(verifiedAnalysis != null ? verifiedAnalysis.getId() : null)
                 .loanType(type)
                 .principalAmount(req.getPrincipalAmount())
                 .interestRate(rate)

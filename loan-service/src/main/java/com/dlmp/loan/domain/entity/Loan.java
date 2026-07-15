@@ -48,6 +48,10 @@ public class Loan {
     @Column(name = "applicant_email", length = 100)
     private String applicantEmail;
 
+    /** Set only when this application used a verified-income limit increase — see BankStatementAnalysis. */
+    @Column(name = "bank_statement_analysis_id", length = 36)
+    private String bankStatementAnalysisId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "loan_type", nullable = false, length = 20)
     private LoanType loanType;

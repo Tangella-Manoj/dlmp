@@ -1,18 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { loansApi } from "@/api/loans";
+import { bankStatementsApi } from "@/api/bankStatements";
 import { apiErrorMessage } from "@/api/client";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { OtpVerifyDialog } from "@/components/consent/OtpVerifyDialog";
 import {
-  loanApplicationSchema,
+  buildLoanApplicationSchema,
   type LoanApplicationFormInput,
   type LoanApplicationFormValues,
 } from "@/lib/schemas";
@@ -24,8 +26,23 @@ import type { LoanType } from "@/types/domain";
 export function ApplyLoanPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [submitting, setSubmitting] = useState(false);
+  const [searchParams] = useSearchParams();
+  const useVerifiedLimit = searchParams.get("verifiedLimit") === "1";
 
+  const [submitting, setSubmitting] = useState(false);
+  const [appConsented, setAppConsented] = useState(false);
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [pendingValues, setPendingValues] = useState<LoanApplicationFormValues | null>(null);
+
+  const { data: verifiedAnalysis } = useQuery({
+    queryKey: ["bank-statements", "latest"],
+    queryFn: bankStatementsApi.latest,
+    enabled: useVerifiedLimit,
+    retry: false,
+  });
+  const verifiedCap = useVerifiedLimit ? verifiedAnalysis?.verifiedEligibleAmount : undefined;
+
+  const schema = useMemo(() => buildLoanApplicationSchema(verifiedCap), [verifiedCap]);
   const {
     register,
     control,
@@ -33,7 +50,7 @@ export function ApplyLoanPage() {
     watch,
     formState: { errors },
   } = useForm<LoanApplicationFormInput, unknown, LoanApplicationFormValues>({
-    resolver: zodResolver(loanApplicationSchema),
+    resolver: zodResolver(schema),
     defaultValues: { loanType: "PERSONAL", tenureMonths: 12 },
   });
 
@@ -41,6 +58,7 @@ export function ApplyLoanPage() {
   const principal = Number(watch("principalAmount")) || 0;
   const tenure = Number(watch("tenureMonths")) || 0;
   const bounds = LOAN_TYPE_BOUNDS[loanType];
+  const displayMax = verifiedCap ? Math.max(bounds.max, verifiedCap) : bounds.max;
 
   const preview = useMemo(() => {
     const emi = estimateEmi(principal, bounds.rate, tenure);
@@ -48,13 +66,14 @@ export function ApplyLoanPage() {
     return { emi, interest, total: principal + Math.max(interest, 0) };
   }, [principal, tenure, bounds.rate]);
 
-  async function onSubmit(values: LoanApplicationFormValues) {
+  async function submitApplication(values: LoanApplicationFormValues) {
     setSubmitting(true);
     try {
       const loan = await loansApi.apply({
         ...values,
         purpose: values.purpose || undefined,
         existingDebts: values.existingDebts || undefined,
+        useVerifiedLimit,
       });
       toast.success(`Application submitted — ${loan.loanNumber}`);
       await qc.invalidateQueries({ queryKey: ["loans"] });
@@ -66,11 +85,47 @@ export function ApplyLoanPage() {
     }
   }
 
+  function onSubmit(values: LoanApplicationFormValues) {
+    if (!appConsented) {
+      setPendingValues(values);
+      setOtpOpen(true);
+      return;
+    }
+    submitApplication(values);
+  }
+
+  // Once the app-application OTP is verified while a submission was waiting on it, proceed automatically.
+  useEffect(() => {
+    if (appConsented && pendingValues) {
+      const values = pendingValues;
+      setPendingValues(null);
+      submitApplication(values);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appConsented]);
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Link to="/" className="flex items-center gap-1.5 text-sm font-medium text-ink-500 hover:text-ink-700">
         <ArrowLeft className="size-4" /> Back to dashboard
       </Link>
+
+      {useVerifiedLimit ? (
+        <div className="flex items-center gap-2 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
+          <ShieldCheck className="size-4 shrink-0" />
+          {verifiedCap
+            ? `Using your verified limit — eligible up to ${formatCurrency(verifiedCap)}.`
+            : "Loading your verified limit…"}
+        </div>
+      ) : (
+        <p className="text-sm text-ink-500">
+          Need a higher amount than your income alone qualifies for?{" "}
+          <Link to="/verify-income" className="font-medium text-brand-600 hover:underline">
+            Verify your income with a bank statement
+          </Link>
+          .
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
@@ -98,7 +153,7 @@ export function ApplyLoanPage() {
                   label="Loan amount (₹)"
                   type="number"
                   placeholder={String(bounds.min)}
-                  hint={`₹${bounds.min.toLocaleString("en-IN")} – ₹${bounds.max.toLocaleString("en-IN")}`}
+                  hint={`₹${bounds.min.toLocaleString("en-IN")} – ₹${displayMax.toLocaleString("en-IN")}`}
                   error={errors.principalAmount?.message}
                   {...register("principalAmount")}
                 />
@@ -134,7 +189,7 @@ export function ApplyLoanPage() {
               />
 
               <Button type="submit" size="lg" className="w-full" loading={submitting}>
-                Submit Application
+                {appConsented ? "Submit Application" : "Verify & Submit Application"}
               </Button>
             </form>
           </CardBody>
@@ -172,6 +227,13 @@ export function ApplyLoanPage() {
           </Card>
         </div>
       </div>
+
+      <OtpVerifyDialog
+        open={otpOpen}
+        onClose={() => setOtpOpen(false)}
+        purpose="LOAN_APPLICATION"
+        onVerified={() => setAppConsented(true)}
+      />
     </div>
   );
 }

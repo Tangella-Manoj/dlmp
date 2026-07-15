@@ -64,4 +64,53 @@ class CreditScoringServiceTest {
             new BigDecimal("80000"), new BigDecimal("200000"), 24,
             new BigDecimal("10000"), null)).doesNotThrowAnyException();
     }
+
+    @Test
+    void verifiedIncomeReplacesSelfReportedWhenPresent() {
+        // Self-reported income is low (would score poorly), but a much higher
+        // verified income from the bank statement should drive the assessment.
+        CreditScoringService.Assessment a = scoring.assessWithVerification(
+            new BigDecimal("15000"), new BigDecimal("150000"),
+            new BigDecimal("150000"), 0,
+            new BigDecimal("500000"), 24, new BigDecimal("25000"), BigDecimal.ZERO);
+        assertThat(a.score()).isGreaterThan(700);
+        assertThat(a.recommended()).isTrue();
+    }
+
+    @Test
+    void bouncesReduceScore_healthyBalanceIncreasesIt() {
+        CreditScoringService.Assessment clean = scoring.assessWithVerification(
+            new BigDecimal("100000"), new BigDecimal("100000"),
+            new BigDecimal("200000"), 0,
+            new BigDecimal("500000"), 24, new BigDecimal("25000"), BigDecimal.ZERO);
+
+        CreditScoringService.Assessment withBounces = scoring.assessWithVerification(
+            new BigDecimal("100000"), new BigDecimal("100000"),
+            new BigDecimal("200000"), 3,
+            new BigDecimal("500000"), 24, new BigDecimal("25000"), BigDecimal.ZERO);
+
+        assertThat(withBounces.score()).isLessThan(clean.score());
+    }
+
+    @Test
+    void verifiedEligibleAmount_zeroForNullOrZeroIncome() {
+        assertThat(scoring.verifiedEligibleAmount(null, new BigDecimal("10000"), 0))
+            .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(scoring.verifiedEligibleAmount(BigDecimal.ZERO, new BigDecimal("10000"), 0))
+            .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void verifiedEligibleAmount_higherWithHealthyBalance_lowerWithBounces() {
+        BigDecimal income = new BigDecimal("50000");
+        BigDecimal healthyBalance = new BigDecimal("120000"); // > 2x income
+        BigDecimal thinBalance = new BigDecimal("5000");
+
+        BigDecimal withHealthyBalance = scoring.verifiedEligibleAmount(income, healthyBalance, 0);
+        BigDecimal withThinBalance = scoring.verifiedEligibleAmount(income, thinBalance, 0);
+        BigDecimal withBounces = scoring.verifiedEligibleAmount(income, healthyBalance, 5);
+
+        assertThat(withHealthyBalance).isGreaterThan(withThinBalance);
+        assertThat(withHealthyBalance).isGreaterThan(withBounces);
+    }
 }

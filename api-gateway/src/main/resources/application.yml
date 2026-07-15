@@ -5,6 +5,11 @@ spring:
   application:
     name: api-gateway
 
+  codec:
+    # WebFlux's default in-memory buffer is 256KB — too small to proxy a
+    # multipart bank-statement upload (loan-service allows up to 10MB).
+    max-in-memory-size: 10MB
+
   cloud:
     gateway:
       routes:
@@ -25,7 +30,7 @@ spring:
         - id: loan-service
           uri: ${LOAN_SERVICE_URL:http://localhost:8082}
           predicates:
-            - Path=/api/v1/loans/**
+            - Path=/api/v1/loans/**, /api/v1/bank-statements/**
           filters:
             - name: CircuitBreaker
               args:

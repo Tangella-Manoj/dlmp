@@ -63,6 +63,12 @@ public class DlmpEventConsumer {
                 boolean isNew = persistenceService.save(event.getEventId(), event.getUserId(), "Welcome to DLMP! 🎉",
                         "Your account has been created. You can now apply for loans and track repayments.", "SYSTEM");
                 if (isNew) emailService.sendWelcomeEmail(event.getEmail(), event.getFirstName());
+            } else if ("OTP_REQUESTED".equals(event.getEventType())) {
+                // No notification row — a one-time code has no business
+                // lingering in the user's notification history.
+                if (persistenceService.markProcessedIfNew(event.getEventId())) {
+                    emailService.sendOtpEmail(event.getEmail(), event.getFirstName(), event.getOtpCode(), event.getOtpPurpose());
+                }
             }
         } catch (Exception e) {
             log.error("[KAFKA] Failed user event: {}", e.getMessage());

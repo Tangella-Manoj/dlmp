@@ -30,23 +30,36 @@ public class NotificationPersistenceService {
      * that commit redelivers the same message. The existence check and the
      * ProcessedEvent insert happen in the same transaction as the notification
      * row, so a redelivered event is a clean no-op instead of a duplicate.
+     *
+     * @return true if a notification was actually persisted (false if this event was a duplicate delivery).
      */
-    /** @return true if a notification was actually persisted (false if this event was a duplicate delivery). */
     @Transactional
     public boolean save(String eventId, String userId, String title, String message, String type) {
         if (userId == null || userId.isBlank()) return false;
-        if (eventId != null && processedEventRepository.existsById(eventId)) {
-            log.debug("Event {} already processed — skipping duplicate notification", eventId);
-            return false;
-        }
-        if (eventId != null) {
-            processedEventRepository.save(new ProcessedEvent(eventId));
-        }
+        if (!markProcessedIfNew(eventId)) return false;
         Notification n = Notification.builder()
                 .userId(userId).title(title).message(message).notificationType(type).build();
         n = repository.save(n);
         log.debug("Notification saved: userId={}, title={}", userId, title);
         sseRegistry.push(userId, n);
+        return true;
+    }
+
+    /**
+     * Same dedup mechanism as {@link #save}, for events (like OTP delivery)
+     * that shouldn't leave a row in the notifications list at all — an OTP
+     * code has no business lingering in a user's notification history.
+     *
+     * @return true if this event id is new (caller should proceed), false if already processed.
+     */
+    @Transactional
+    public boolean markProcessedIfNew(String eventId) {
+        if (eventId == null) return true;
+        if (processedEventRepository.existsById(eventId)) {
+            log.debug("Event {} already processed — skipping duplicate", eventId);
+            return false;
+        }
+        processedEventRepository.save(new ProcessedEvent(eventId));
         return true;
     }
 

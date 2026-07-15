@@ -101,6 +101,28 @@ export interface LoanApplicationRequest {
   purpose?: string;
   monthlyIncome: number;
   existingDebts?: number;
+  useVerifiedLimit?: boolean;
+}
+
+// ─── OTP consent & bank statement analysis ─────────────────────────────────
+export type OtpPurpose = "LOAN_APPLICATION" | "LIMIT_INCREASE";
+
+export interface BankStatementAnalysis {
+  id: string;
+  fileName?: string;
+  sourceType: "CSV" | "PDF";
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  failureReason?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  monthsCovered?: number;
+  transactionCount?: number;
+  verifiedMonthlyIncome?: number;
+  avgMonthlyBalance?: number;
+  avgMonthlyOutflow?: number;
+  bounceCount?: number;
+  verifiedEligibleAmount?: number;
+  createdAt: string;
 }
 
 export interface LoanDecisionRequest {

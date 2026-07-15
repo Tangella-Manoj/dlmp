@@ -73,6 +73,12 @@ public class EmailService {
     }
 
     @Async("emailExecutor")
+    public void sendOtpEmail(String email, String firstName, String code, String purpose) {
+        if (email == null || code == null) return;
+        sendHtml(email, "Your DLMP verification code: " + code, otpTemplate(firstName, code, purpose));
+    }
+
+    @Async("emailExecutor")
     public void sendLoanApplicationEmail(com.dlmp.common.event.LoanEvent event) {
         if (event.getUserEmail() == null) return;
         sendHtml(event.getUserEmail(),
@@ -137,6 +143,19 @@ public class EmailService {
             <p>Your account has been created successfully.</p>
             <p>You can now apply for loans, track repayments, and manage your financial journey.</p>
             """.formatted(firstName));
+    }
+
+    public String otpTemplate(String firstName, String code, String purpose) {
+        String purposeLabel = "LIMIT_INCREASE".equals(purpose)
+                ? "requesting a credit limit increase"
+                : "submitting a loan application";
+        return html("""
+            <h2>Verification code</h2>
+            <p>Hi <strong>%s</strong>, use this code to confirm you're %s:</p>
+            <p style="font-size:32px;font-weight:700;letter-spacing:6px;text-align:center;
+                      padding:16px;background:#eef2ff;border-radius:8px;color:#1a56db">%s</p>
+            <p>This code expires in 5 minutes. If you didn't request this, you can ignore this email.</p>
+            """.formatted(firstName, purposeLabel, code));
     }
 
     public String loanAppliedTemplate(String firstName, String loanNumber, String amount, String emi) {

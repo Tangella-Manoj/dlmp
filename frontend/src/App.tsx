@@ -7,6 +7,7 @@ import { LoginPage } from "@/pages/Login";
 import { RegisterPage } from "@/pages/Register";
 import { HomePage } from "@/pages/Home";
 import { ApplyLoanPage } from "@/pages/ApplyLoan";
+import { VerifyIncomePage } from "@/pages/VerifyIncome";
 import { LoanDetailPage } from "@/pages/LoanDetail";
 import { NotificationsPage } from "@/pages/Notifications";
 import { ProfilePage } from "@/pages/Profile";
@@ -34,6 +35,7 @@ export default function App() {
 
           <Route element={<RoleRoute allow={["ROLE_CUSTOMER"]} />}>
             <Route path="/loans/apply" element={<ApplyLoanPage />} />
+            <Route path="/verify-income" element={<VerifyIncomePage />} />
           </Route>
 
           <Route element={<RoleRoute allow={["ROLE_ADMIN", "ROLE_LOAN_OFFICER"]} />}>
