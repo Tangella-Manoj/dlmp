@@ -5,7 +5,7 @@ import type { ApiResponse, ErrorResponse } from "@/types/api";
 import type { AuthResponse } from "@/types/domain";
 
 export const API_BASE_URL: string =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8090";
 
 // Generous but bounded: Render's free tier can take up to ~3-4 min to boot a
 // fully-cold JVM instance. A keep-warm ping every 10 min (see

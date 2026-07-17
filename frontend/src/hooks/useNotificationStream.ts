@@ -25,6 +25,7 @@ export function useNotificationStream() {
 
     const url = `${API_BASE_URL}/api/v1/notifications/stream?access_token=${encodeURIComponent(session.accessToken)}`;
     const es = new EventSource(url);
+    const pendingInvalidations: ReturnType<typeof setTimeout>[] = [];
 
     es.addEventListener("notification", (event) => {
       let notification: Notification;
@@ -44,12 +45,27 @@ export function useNotificationStream() {
       // status flip, a payment posting) — refresh any page showing it right
       // now instead of waiting for that page's own poll interval.
       if (notification.notificationType === "LOAN" || notification.notificationType === "PAYMENT") {
-        qc.invalidateQueries({ queryKey: ["loans"] });
-        qc.invalidateQueries({ queryKey: ["reports"] });
-        qc.invalidateQueries({ queryKey: ["payments"] });
+        const invalidateAll = () => {
+          qc.invalidateQueries({ queryKey: ["loans"] });
+          qc.invalidateQueries({ queryKey: ["reports"] });
+          qc.invalidateQueries({ queryKey: ["payments"] });
+        };
+        invalidateAll();
+        // notification-service and loan-service both consume the same
+        // payment/loan Kafka event independently and in parallel — this SSE
+        // push can (and often does) arrive before loan-service's own
+        // consumer has finished applying the update to the loan/schedule.
+        // A single immediate invalidation can therefore refetch data that's
+        // still stale. A follow-up invalidation after the two consumers'
+        // typical gap catches the now-settled state without waiting for
+        // each page's own slower poll interval.
+        pendingInvalidations.push(setTimeout(invalidateAll, 8000));
       }
     });
 
-    return () => es.close();
+    return () => {
+      es.close();
+      pendingInvalidations.forEach(clearTimeout);
+    };
   }, [session?.accessToken, qc]);
 }

@@ -230,7 +230,11 @@ services:
       context: .
       dockerfile: api-gateway/Dockerfile
     ports:
-      - "8080:8080"
+      # Host port 8090, not 8080 — 8080 is reserved on this machine for a
+      # separate local Tomcat/Openbravo instance. The container's internal
+      # port stays 8080 (see healthcheck below); only the host-side mapping
+      # changes, so nothing inside the stack needs to know about this.
+      - "8090:8080"
     environment:
       <<: *app-env
       USER_SERVICE_URL: http://user-service:8081
@@ -238,6 +242,7 @@ services:
       PAYMENT_SERVICE_URL: http://payment-service:8083
       NOTIFICATION_SERVICE_URL: http://notification-service:8084
       REPORT_SERVICE_URL: http://report-service:8085
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
     depends_on:
       user-service:
         condition: service_healthy

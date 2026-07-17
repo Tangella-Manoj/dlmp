@@ -16,9 +16,11 @@ export function CustomerDashboard() {
     queryKey: ["loans", "my"],
     queryFn: () => loansApi.my(0, 50),
     // Live push (useNotificationStream) invalidates this instantly on a
-    // relevant event; this is only a slow safety net for the rare gap
-    // right after a reconnect.
-    refetchInterval: 60_000,
+    // relevant event (plus a follow-up a few seconds later, since the
+    // backend event that triggers the push can itself arrive slightly
+    // ahead of the loan/payment update it's announcing); this poll is only
+    // a safety net for the rare gap right after a reconnect.
+    refetchInterval: 20_000,
   });
 
   const loans = page?.content ?? [];

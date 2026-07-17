@@ -23,7 +23,7 @@ npm run dev          # http://localhost:5173, talks to the live Render gateway
 
 To point at a local backend instead, create `.env.local`:
 ```
-VITE_API_BASE_URL=http://localhost:8080
+VITE_API_BASE_URL=http://localhost:8090
 ```
 (and make sure the gateway's `CORS_ALLOWED_ORIGINS` includes `http://localhost:5173`.)
 

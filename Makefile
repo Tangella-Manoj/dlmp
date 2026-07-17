@@ -43,7 +43,7 @@ urls: ## Print all service URLs
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "  🌐  DLMP v2.0 — Development URLs"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "  API Gateway:    http://localhost:8080"
+	@echo "  API Gateway:    http://localhost:8090"
 	@echo "  User Service:   http://localhost:8081/swagger-ui.html"
 	@echo "  Loan Service:   http://localhost:8082/swagger-ui.html"
 	@echo "  Payment Svc:    http://localhost:8083/swagger-ui.html"

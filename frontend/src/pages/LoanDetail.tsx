@@ -16,6 +16,8 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmiScheduleTable } from "@/components/loans/EmiScheduleTable";
 import { PayEmiDialog } from "@/components/loans/PayEmiDialog";
 import { RejectLoanDialog } from "@/components/loans/RejectLoanDialog";
+import { LoanTimeline } from "@/components/loans/LoanTimeline";
+import { RepaymentProgress } from "@/components/loans/RepaymentProgress";
 import { formatCurrency, formatDate, formatInterestRate } from "@/lib/format";
 import { LOAN_TYPE_LABELS } from "@/lib/loanMeta";
 
@@ -140,6 +142,14 @@ export function LoanDetailPage() {
         </div>
       </div>
 
+      {!["REJECTED", "CANCELLED", "DEFAULTED", "NPA"].includes(loan.status) && (
+        <Card>
+          <CardBody>
+            <LoanTimeline status={loan.status} />
+          </CardBody>
+        </Card>
+      )}
+
       {/* Action bar */}
       {isOfficer && (loan.status === "PENDING_REVIEW" || loan.status === "UNDER_REVIEW") && (
         <Card className="border-warning-200 bg-warning-50/50">
@@ -205,6 +215,19 @@ export function LoanDetailPage() {
           )}
         />
       </div>
+
+      {(loan.status === "ACTIVE" || loan.status === "CLOSED") && schedule.length > 0 && (
+        <Card>
+          <CardBody>
+            <RepaymentProgress
+              sanctionedAmount={loan.sanctionedAmount}
+              outstandingPrincipal={loan.outstandingPrincipal}
+              paidInstallments={schedule.filter((e) => e.status === "PAID").length}
+              totalInstallments={schedule.length}
+            />
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

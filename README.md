@@ -74,7 +74,7 @@ make urls
 ```
 
 **Key endpoints:**
-- API Gateway:      http://localhost:8080
+- API Gateway:      http://localhost:8090
 - Kafka UI:         http://localhost:9000
 - Zipkin Tracing:   http://localhost:9411
 - MailHog UI:       http://localhost:8025
