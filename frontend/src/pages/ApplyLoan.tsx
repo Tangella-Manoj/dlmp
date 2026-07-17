@@ -11,7 +11,7 @@ import { bankStatementsApi } from "@/api/bankStatements";
 import { apiErrorMessage } from "@/api/client";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Stepper } from "@/components/ui/Stepper";
 import { Slider } from "@/components/ui/Slider";
 import { OtpVerifyDialog } from "@/components/consent/OtpVerifyDialog";
