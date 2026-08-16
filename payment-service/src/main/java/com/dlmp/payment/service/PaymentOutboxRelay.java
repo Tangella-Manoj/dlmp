@@ -7,14 +7,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 /**
- * Publishes PENDING payment_outbox rows to Kafka. This relay was missing
- * entirely — payment events piled up in the table and never reached the
- * notification/report/loan services.
+ * Publishes PENDING payment_outbox rows to Kafka.
+ *
+ * Status updates after each Kafka send are delegated to PaymentOutboxStateUpdater
+ * (a separate Spring bean) so that Spring's @Transactional proxy actually
+ * intercepts them. Calling handleSuccess/handleFailure via "this." from the
+ * whenComplete callback bypasses the proxy — the isolated bean pattern fixes that.
  */
 @Service
 @RequiredArgsConstructor
@@ -22,10 +24,10 @@ import java.util.List;
 public class PaymentOutboxRelay {
 
     private static final int BATCH = 100;
-    private static final int MAX_RETRIES = 5;
 
     private final PaymentOutboxRepository outboxRepo;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final PaymentOutboxStateUpdater stateUpdater;  // injected — NOT self-invoked
 
     @Scheduled(fixedDelayString = "${dlmp.outbox.relay-delay-ms:5000}")
     public void relay() {
@@ -37,35 +39,13 @@ public class PaymentOutboxRelay {
             try {
                 kafkaTemplate.send(event.getKafkaTopic(), event.getAggregateId(), event.getPayload())
                         .whenComplete((result, ex) -> {
-                            if (ex != null) handleFailure(event.getId(), ex.getMessage());
-                            else handleSuccess(event.getId());
+                            // Delegate to the injected bean — Spring proxy applies @Transactional here
+                            if (ex != null) stateUpdater.recordFailure(event.getId(), ex.getMessage());
+                            else stateUpdater.markPublished(event.getId());
                         });
             } catch (Exception e) {
-                handleFailure(event.getId(), e.getMessage());
+                stateUpdater.recordFailure(event.getId(), e.getMessage());
             }
         }
-    }
-
-    @Transactional
-    public void handleSuccess(String id) {
-        outboxRepo.findById(id).ifPresent(e -> {
-            e.setStatus("PUBLISHED");
-            outboxRepo.save(e);
-            log.debug("Payment outbox event {} PUBLISHED", id);
-        });
-    }
-
-    @Transactional
-    public void handleFailure(String id, String error) {
-        outboxRepo.findById(id).ifPresent(e -> {
-            e.setRetryCount(e.getRetryCount() + 1);
-            e.setLastError(error != null && error.length() > 500 ? error.substring(0, 500) : error);
-            if (e.getRetryCount() >= MAX_RETRIES) {
-                e.setStatus("DEAD_LETTER");
-                log.error("⚠️ Payment outbox DEAD_LETTER: eventId={} type={} agg={}",
-                        id, e.getEventType(), e.getAggregateId());
-            }
-            outboxRepo.save(e);
-        });
     }
 }

@@ -8,8 +8,10 @@ import com.dlmp.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -32,9 +34,12 @@ import java.time.Instant;
 public class OtpService {
 
     private static final String USER_TOPIC = "dlmp.user.events";
-    private static final Duration OTP_TTL = Duration.ofMinutes(5);
+    private static final Duration OTP_TTL     = Duration.ofMinutes(5);
     private static final Duration CONSENT_TTL = Duration.ofMinutes(30);
+    private static final Duration RATE_WINDOW  = Duration.ofHours(1);
     private static final int MAX_ATTEMPTS = 5;
+    /** Max OTP requests per user/purpose per hour — prevents email quota abuse */
+    private static final int MAX_REQUESTS_PER_HOUR = 3;
 
     private final UserRepository userRepository;
     private final OutboxEventRepository outboxRepository;
@@ -46,6 +51,19 @@ public class OtpService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found: " + userId));
 
+        // ─── Rate limit: max 3 OTP requests per user/purpose per hour ─────────
+        String rateLimitKey = requestRateLimitKey(userId, purpose);
+        Long requestCount = redis.opsForValue().increment(rateLimitKey);
+        if (requestCount != null && requestCount == 1) {
+            // First increment in this window — set the expiry for the counter
+            redis.expire(rateLimitKey, RATE_WINDOW);
+        }
+        if (requestCount != null && requestCount > MAX_REQUESTS_PER_HOUR) {
+            log.warn("OTP rate limit exceeded: userId={} purpose={} count={}", userId, purpose, requestCount);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Too many OTP requests. Please wait before requesting a new code.");
+        }
+
         String code = generateCode();
         redis.opsForValue().set(otpKey(userId, purpose), code, OTP_TTL);
         redis.delete(attemptsKey(userId, purpose));
@@ -54,7 +72,7 @@ public class OtpService {
         event.setOtpCode(code);
         event.setOtpPurpose(purpose);
         outboxRepository.save(outboxRelay.create(event, USER_TOPIC));
-        log.info("OTP requested: userId={} purpose={}", userId, purpose);
+        log.info("OTP requested: userId={} purpose={} (request #{} this hour)", userId, purpose, requestCount);
     }
 
     /** @return true if the code was correct and consent has now been granted for {@code purpose}. */
@@ -98,5 +116,9 @@ public class OtpService {
 
     private static String consentKey(String userId, String purpose) {
         return "dlmp:consent:" + purpose + ":" + userId;
+    }
+
+    private static String requestRateLimitKey(String userId, String purpose) {
+        return "dlmp:otp:ratelimit:" + purpose + ":" + userId;
     }
 }

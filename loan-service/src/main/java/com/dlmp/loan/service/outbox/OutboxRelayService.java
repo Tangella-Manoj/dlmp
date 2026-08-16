@@ -21,6 +21,12 @@ import java.util.List;
  *   - Business TX: save entity + outbox row atomically
  *   - Relay TX: read PENDING → publish → mark PUBLISHED
  *   - Dead letter after maxRetries failures
+ *
+ * IMPORTANT — self-invocation fix:
+ *   The whenComplete callback runs on Kafka's IO thread. Calling @Transactional
+ *   methods via "this." from that callback bypasses Spring's AOP proxy. All
+ *   status updates are therefore delegated to OutboxStateUpdater (a separate
+ *   Spring bean) so the proxy IS applied and each update runs in its own TX.
  */
 @Service
 @RequiredArgsConstructor
@@ -30,6 +36,7 @@ public class OutboxRelayService {
     private final OutboxEventRepository outboxRepo;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final OutboxStateUpdater stateUpdater;   // injected — NOT self-invoked
 
     private static final int BATCH = 100;
 
@@ -44,33 +51,14 @@ public class OutboxRelayService {
             try {
                 kafkaTemplate.send(event.getKafkaTopic(), event.getAggregateId(), event.getPayload())
                         .whenComplete((r, ex) -> {
-                            if (ex != null) handleFailure(event.getId(), ex.getMessage());
-                            else handleSuccess(event.getId());
+                            // Delegate to the injected bean — Spring proxy applies @Transactional here
+                            if (ex != null) stateUpdater.recordFailure(event.getId(), ex.getMessage());
+                            else stateUpdater.markPublished(event.getId());
                         });
             } catch (Exception e) {
-                handleFailure(event.getId(), e.getMessage());
+                stateUpdater.recordFailure(event.getId(), e.getMessage());
             }
         }
-    }
-
-    @Transactional
-    public void handleSuccess(String id) {
-        outboxRepo.findById(id).ifPresent(e -> {
-            e.markPublished();
-            outboxRepo.save(e);
-            log.debug("Outbox event {} PUBLISHED", id);
-        });
-    }
-
-    @Transactional
-    public void handleFailure(String id, String error) {
-        outboxRepo.findById(id).ifPresent(e -> {
-            e.recordFailure(error);
-            outboxRepo.save(e);
-            if ("DEAD_LETTER".equals(e.getStatus())) {
-                log.error("⚠️ DEAD_LETTER: eventId={} type={} agg={}", id, e.getEventType(), e.getAggregateId());
-            }
-        });
     }
 
     /** Creates an OutboxEvent record — call within the same business @Transactional */
