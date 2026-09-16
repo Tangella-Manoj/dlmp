@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { AlertCircle, ArrowRight } from "lucide-react";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -13,10 +14,14 @@ export function RegisterPage() {
   const { register: registerUser } = useAuth();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
+  const [duplicateEmail, setDuplicateEmail] = useState<string | null>(null);
+  const [registerError, setRegisterError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<RegisterFormInput, unknown, RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -24,6 +29,9 @@ export function RegisterPage() {
 
   async function onSubmit(values: RegisterFormValues) {
     setSubmitting(true);
+    setDuplicateEmail(null);
+    setRegisterError(null);
+    clearErrors();
     try {
       await registerUser({
         ...values,
@@ -33,14 +41,67 @@ export function RegisterPage() {
       toast.success("Account created — welcome to DLMP!");
       navigate("/", { replace: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Registration failed");
+      const message = err instanceof Error ? err.message : "Registration failed";
+      const isDuplicate =
+        message.toLowerCase().includes("already registered") ||
+        message.toLowerCase().includes("already exists");
+
+      if (isDuplicate) {
+        setDuplicateEmail(values.email);
+        setError("email", { type: "server", message: "An account with this email already exists." });
+        toast.error("An account with this email already exists.");
+      } else {
+        setRegisterError(message);
+        toast.error(message);
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
+  function handleInputChange() {
+    if (duplicateEmail) setDuplicateEmail(null);
+    if (registerError) setRegisterError(null);
+  }
+
   return (
     <AuthLayout title="Create your account" subtitle="Start your loan application in minutes">
+      {duplicateEmail && (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs sm:text-sm text-amber-950"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-ink-900 text-sm">Account Already Exists</p>
+              <p className="mt-1 text-ink-700">
+                An account with <strong className="font-semibold text-ink-900">{duplicateEmail}</strong> already exists.
+              </p>
+              <div className="mt-3 pt-2 border-t border-amber-200/80">
+                <Link
+                  to={`/login?email=${encodeURIComponent(duplicateEmail)}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 shadow-xs transition-colors"
+                >
+                  <span>Sign In with this email</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {registerError && (
+        <div
+          role="alert"
+          className="mb-4 flex items-start gap-2.5 rounded-xl border border-danger-200 bg-danger-50 p-3.5 text-sm text-danger-800"
+        >
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-danger-600" />
+          <div className="flex-1 font-medium leading-snug">{registerError}</div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="grid grid-cols-2 gap-3">
           <Input label="First name" placeholder="Jane" error={errors.firstName?.message} {...register("firstName")} />
@@ -52,7 +113,7 @@ export function RegisterPage() {
           autoComplete="email"
           placeholder="you@example.com"
           error={errors.email?.message}
-          {...register("email")}
+          {...register("email", { onChange: handleInputChange })}
         />
         <Input
           label="Password"

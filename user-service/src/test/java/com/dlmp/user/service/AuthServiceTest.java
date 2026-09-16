@@ -7,8 +7,11 @@ import com.dlmp.user.dto.request.LoginRequest;
 import com.dlmp.user.dto.request.RegisterRequest;
 import com.dlmp.user.dto.response.AuthResponse;
 import com.dlmp.user.domain.entity.OutboxEvent;
+import com.dlmp.user.exception.AccountDisabledException;
+import com.dlmp.user.exception.AccountLockedException;
 import com.dlmp.user.exception.DuplicateEmailException;
 import com.dlmp.user.exception.InvalidCredentialsException;
+import com.dlmp.user.exception.UserNotFoundException;
 import com.dlmp.user.repository.OutboxEventRepository;
 import com.dlmp.user.repository.RefreshTokenRepository;
 import com.dlmp.user.repository.UserRepository;
@@ -134,5 +137,100 @@ class AuthServiceTest {
     void isUserActive_returnsFalse_forNonExistentUser() {
         when(userRepository.findById("x")).thenReturn(Optional.empty());
         assertThat(authService.isUserActive("x")).isFalse();
+    }
+
+    @Test
+    void login_userNotFound_throwsUserNotFoundException() {
+        LoginRequest req = new LoginRequest();
+        req.setEmail("nonexistent@test.com");
+        req.setPassword("Password@1");
+
+        when(userRepository.findByEmail("nonexistent@test.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(req))
+                .isInstanceOf(UserNotFoundException.class)
+                .hasMessage("No account found with email: nonexistent@test.com");
+    }
+
+    @Test
+    void login_wrongPassword_showsRemainingAttempts() {
+        LoginRequest req = new LoginRequest();
+        req.setEmail("user@test.com");
+        req.setPassword("WrongPassword1@");
+
+        User user = User.builder().id("u1").email("user@test.com")
+                .passwordHash(passwordEncoder.encode("Correct@1"))
+                .role(UserRole.ROLE_CUSTOMER).status("ACTIVE")
+                .failedLoginAttempts(1).build();
+
+        when(userRepository.findByEmail("user@test.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenReturn(user);
+
+        assertThatThrownBy(() -> authService.login(req))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Incorrect password. 3 attempts remaining before account lockout.");
+        assertThat(user.getFailedLoginAttempts()).isEqualTo(2);
+    }
+
+    @Test
+    void login_alreadyLocked_throwsAccountLockedException() {
+        LoginRequest req = new LoginRequest();
+        req.setEmail("user@test.com");
+        req.setPassword("AnyPassword@1");
+
+        User user = User.builder().id("u1").email("user@test.com")
+                .passwordHash(passwordEncoder.encode("Correct@1"))
+                .role(UserRole.ROLE_CUSTOMER).status("ACTIVE")
+                .failedLoginAttempts(5)
+                .lockedUntil(java.time.LocalDateTime.now().plusMinutes(25))
+                .build();
+
+        when(userRepository.findByEmail("user@test.com")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.login(req))
+                .isInstanceOf(AccountLockedException.class)
+                .hasMessageContaining("Account is temporarily locked");
+    }
+
+    @Test
+    void login_disabledAccount_throwsAccountDisabledException() {
+        LoginRequest req = new LoginRequest();
+        req.setEmail("user@test.com");
+        req.setPassword("Correct@1");
+
+        User user = User.builder().id("u1").email("user@test.com")
+                .passwordHash(passwordEncoder.encode("Correct@1"))
+                .role(UserRole.ROLE_CUSTOMER).status("SUSPENDED")
+                .build();
+
+        when(userRepository.findByEmail("user@test.com")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.login(req))
+                .isInstanceOf(AccountDisabledException.class)
+                .hasMessage("Your account is suspended. Please contact support.");
+    }
+
+    @Test
+    void login_expiredLock_resetsAttemptsAndAllowsLogin() {
+        LoginRequest req = new LoginRequest();
+        req.setEmail("user@test.com");
+        req.setPassword("Correct@1");
+
+        User user = User.builder().id("u1").email("user@test.com")
+                .firstName("Manoj")
+                .passwordHash(passwordEncoder.encode("Correct@1"))
+                .role(UserRole.ROLE_CUSTOMER).status("ACTIVE")
+                .failedLoginAttempts(5)
+                .lockedUntil(java.time.LocalDateTime.now().minusMinutes(5))
+                .build();
+
+        when(userRepository.findByEmail("user@test.com")).thenReturn(Optional.of(user));
+        when(userRepository.save(any())).thenReturn(user);
+        when(refreshTokenRepository.save(any())).thenReturn(null);
+
+        AuthResponse resp = authService.login(req);
+        assertThat(resp).isNotNull();
+        assertThat(user.getLockedUntil()).isNull();
+        assertThat(user.getFailedLoginAttempts()).isEqualTo(0);
     }
 }

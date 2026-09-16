@@ -116,4 +116,24 @@ public class User implements UserDetails {
         this.lastLogin = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
+
+    public void resetLockIfExpired() {
+        if (lockedUntil != null && lockedUntil.isBefore(LocalDateTime.now())) {
+            this.lockedUntil = null;
+            this.failedLoginAttempts = 0;
+            this.updatedAt = LocalDateTime.now();
+        }
+    }
+
+    public long getRemainingLockMinutes() {
+        if (lockedUntil == null) {
+            return 0;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (lockedUntil.isBefore(now)) {
+            return 0;
+        }
+        long minutes = java.time.Duration.between(now, lockedUntil).toMinutes();
+        return Math.max(1, minutes + 1);
+    }
 }

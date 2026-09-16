@@ -8,6 +8,8 @@ import com.dlmp.user.dto.request.LoginRequest;
 import com.dlmp.user.dto.request.RegisterRequest;
 import com.dlmp.user.dto.response.AuthResponse;
 import com.dlmp.user.dto.response.UserResponse;
+import com.dlmp.user.exception.AccountDisabledException;
+import com.dlmp.user.exception.AccountLockedException;
 import com.dlmp.user.exception.DuplicateEmailException;
 import com.dlmp.user.exception.InvalidCredentialsException;
 import com.dlmp.user.exception.UserNotFoundException;
@@ -73,18 +75,33 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest req) {
-        User user = userRepository.findByEmail(req.getEmail())
-                .orElseThrow(InvalidCredentialsException::new);
+        String email = req.getEmail() != null ? req.getEmail().trim() : "";
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("No account found with email: " + email));
+
+        user.resetLockIfExpired();
 
         if (user.isLocked()) {
-            throw new InvalidCredentialsException();
+            throw new AccountLockedException(user.getRemainingLockMinutes());
+        }
+
+        if (!user.isEnabled()) {
+            String status = user.getStatus() != null ? user.getStatus().toLowerCase() : "inactive";
+            throw new AccountDisabledException("Your account is " + status + ". Please contact support.");
         }
 
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
             user.recordFailedLogin();
             userRepository.save(user);
-            log.warn("Failed login attempt for email={}, attempts={}", req.getEmail(), user.getFailedLoginAttempts());
-            throw new InvalidCredentialsException();
+            log.warn("Failed login attempt for email={}, attempts={}", email, user.getFailedLoginAttempts());
+
+            if (user.isLocked()) {
+                throw new AccountLockedException("Account has been locked due to 5 consecutive failed login attempts. Please try again in 30 minutes.");
+            }
+
+            int remainingAttempts = Math.max(0, 5 - user.getFailedLoginAttempts());
+            String attemptMsg = remainingAttempts == 1 ? "1 attempt remaining" : remainingAttempts + " attempts remaining";
+            throw new InvalidCredentialsException("Incorrect password. " + attemptMsg + " before account lockout.", "INVALID_PASSWORD");
         }
 
         user.recordSuccessfulLogin();
@@ -102,22 +119,33 @@ public class AuthService {
         // Reject anything that is not a validly signed, unexpired refresh JWT
         // before touching the database.
         if (!jwtUtil.isValid(refreshTokenValue) || !jwtUtil.isRefreshToken(refreshTokenValue)) {
-            throw new InvalidCredentialsException();
+            throw new InvalidCredentialsException("Invalid or expired refresh token", "INVALID_REFRESH_TOKEN");
         }
 
         String hash = sha256(refreshTokenValue);
         RefreshToken rt = refreshTokenRepository.findByTokenHash(hash)
-                .orElseThrow(() -> new InvalidCredentialsException());
+                .orElseThrow(() -> new InvalidCredentialsException("Refresh token not found", "REFRESH_TOKEN_NOT_FOUND"));
 
         if (!rt.isActive()) {
             // Possible token reuse attack — revoke all tokens for this user
             refreshTokenRepository.revokeAllByUserId(rt.getUserId());
             log.warn("Refresh token reuse attack detected for userId={}", rt.getUserId());
-            throw new InvalidCredentialsException();
+            throw new InvalidCredentialsException("Refresh token has been revoked. Please sign in again.", "REVOKED_REFRESH_TOKEN");
         }
 
         User user = userRepository.findById(rt.getUserId())
                 .orElseThrow(() -> new UserNotFoundException("User not found: " + rt.getUserId()));
+
+        user.resetLockIfExpired();
+
+        if (user.isLocked()) {
+            throw new AccountLockedException(user.getRemainingLockMinutes());
+        }
+
+        if (!user.isEnabled()) {
+            String status = user.getStatus() != null ? user.getStatus().toLowerCase() : "inactive";
+            throw new AccountDisabledException("Your account is " + status + ". Please contact support.");
+        }
 
         // Rotate: revoke old, issue new
         rt.setRevoked(true);

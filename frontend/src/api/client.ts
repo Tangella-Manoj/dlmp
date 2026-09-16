@@ -117,12 +117,24 @@ api.interceptors.response.use(
 /** Extracts a human-readable message from a failed API call, backend-shape aware. */
 export function apiErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
-    const body = err.response?.data as ErrorResponse | undefined;
+    const data = err.response?.data;
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+    const body = data as (ErrorResponse & { error?: string }) | undefined;
     if (body?.fieldErrors?.length) {
       return body.fieldErrors.map((f) => f.message).join(", ");
     }
-    if (body?.message) return body.message;
+    if (body?.message && typeof body.message === "string" && body.message.trim()) {
+      return body.message;
+    }
+    if (body?.error && typeof body.error === "string" && body.error.trim()) {
+      return body.error;
+    }
+    if (err.response?.status === 401) return "Invalid email or password.";
     if (err.response?.status === 403) return "You don't have permission to do that.";
+    if (err.response?.status === 404) return "Requested resource not found.";
+    if (err.response?.status === 423) return "Account is temporarily locked. Please try again later.";
     if (err.code === "ECONNABORTED") {
       return "The server took too long to respond. It may still be waking up — please try again.";
     }

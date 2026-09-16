@@ -63,6 +63,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(409, "A record with these details already exists", "DUPLICATE_RESOURCE"));
     }
 
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthentication(org.springframework.security.core.AuthenticationException ex, HttpServletRequest req) {
+        log.warn("Authentication failed at {}: {}", req.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(401)
+                .body(ApiResponse.error(401, ex.getMessage() != null ? ex.getMessage() : "Authentication failed", "AUTHENTICATION_FAILED"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex, HttpServletRequest req) {
         log.error("Unhandled exception at {}: {}", req.getRequestURI(), ex.getMessage(), ex);
