@@ -277,4 +277,4 @@ services:
       - key: TRACING_SAMPLING_PROBABILITY
         value: "0"
       - key: CORS_ALLOWED_ORIGINS
-        value: https://dlmp-gateway.onrender.com
+        value: https://dlmp.stacknode.dev,https://dlmp-gateway.onrender.com,http://localhost:5173
